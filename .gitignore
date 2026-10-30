@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.vite/
+.next/
+coverage/
+*.log
+.DS_Store
+.env.local
+.env.*.local
+.vercel/
+.env

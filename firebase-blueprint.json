@@ -1,0 +1,160 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User account for SYSJEGER church information system",
+      "type": "object",
+      "properties": {
+        "username": { "type": "string", "maxLength": 64 },
+        "name": { "type": "string", "maxLength": 128 },
+        "role": { "type": "string", "enum": ["Super Admin", "Admin Gereja", "Ketua Majelis/Pendeta", "Majelis/Rayon", "Jemaat"] },
+        "rayonId": { "type": "string", "maxLength": 64 },
+        "memberId": { "type": "string", "maxLength": 64 },
+        "phone": { "type": "string", "maxLength": 32 },
+        "email": { "type": "string", "format": "email", "maxLength": 128 },
+        "status": { "type": "string", "enum": ["Aktif", "Nonaktif"] },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["username", "name", "role", "status"]
+    },
+    "Member": {
+      "title": "Member",
+      "description": "Church congregation member profile in GMIT Betel Fuimelang",
+      "type": "object",
+      "properties": {
+        "memberNo": { "type": "string", "maxLength": 64 },
+        "fullName": { "type": "string", "maxLength": 128 },
+        "nickname": { "type": "string", "maxLength": 64 },
+        "nik": { "type": "string", "maxLength": 32 },
+        "familyCardNo": { "type": "string", "maxLength": 32 },
+        "familyId": { "type": "string", "maxLength": 64 },
+        "familyName": { "type": "string", "maxLength": 128 },
+        "familyRole": { "type": "string", "enum": ["Kepala Keluarga", "Istri", "Anak", "Orang Tua", "Famili Lain"] },
+        "gender": { "type": "string", "enum": ["Laki-laki", "Perempuan"] },
+        "birthPlace": { "type": "string", "maxLength": 128 },
+        "birthDate": { "type": "string", "maxLength": 32 },
+        "address": { "type": "string", "maxLength": 256 },
+        "kelurahan": { "type": "string", "maxLength": 128 },
+        "kecamatan": { "type": "string", "maxLength": 128 },
+        "kabupaten": { "type": "string", "maxLength": 128 },
+        "phone": { "type": "string", "maxLength": 32 },
+        "email": { "type": "string", "maxLength": 128 },
+        "maritalStatus": { "type": "string", "enum": ["Belum Menikah", "Menikah", "Duda", "Janda"] },
+        "spouseName": { "type": "string", "maxLength": 128 },
+        "rayonId": { "type": "string", "maxLength": 64 },
+        "rayonName": { "type": "string", "maxLength": 128 },
+        "categorialGroupId": { "type": "string", "maxLength": 64 },
+        "categorialGroupName": { "type": "string", "maxLength": 128 },
+        "membershipStatus": { "type": "string", "enum": ["Tetap", "Tamu", "Titipan"] },
+        "baptismStatus": { "type": "string", "enum": ["Sudah", "Belum"] },
+        "baptismDate": { "type": "string", "maxLength": 32 },
+        "confirmationStatus": { "type": "string", "enum": ["Sudah", "Belum"] },
+        "confirmationDate": { "type": "string", "maxLength": 32 },
+        "marriageChurchStatus": { "type": "string", "enum": ["Sudah", "Belum"] },
+        "marriageDate": { "type": "string", "maxLength": 32 },
+        "education": { "type": "string", "maxLength": 128 },
+        "occupation": { "type": "string", "maxLength": 128 },
+        "joinDate": { "type": "string", "maxLength": 32 },
+        "status": { "type": "string", "enum": ["Aktif", "Pindah", "Meninggal"] },
+        "notes": { "type": "string", "maxLength": 512 },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["memberNo", "fullName", "familyRole", "gender", "birthDate", "address", "rayonId", "status"]
+    },
+    "Family": {
+      "title": "Family",
+      "description": "Family household card (KK) record",
+      "type": "object",
+      "properties": {
+        "familyNo": { "type": "string", "maxLength": 64 },
+        "headOfFamilyName": { "type": "string", "maxLength": 128 },
+        "headOfFamilyId": { "type": "string", "maxLength": 64 },
+        "address": { "type": "string", "maxLength": 256 },
+        "rayonId": { "type": "string", "maxLength": 64 },
+        "rayonName": { "type": "string", "maxLength": 128 },
+        "phone": { "type": "string", "maxLength": 32 },
+        "memberCount": { "type": "number" },
+        "notes": { "type": "string", "maxLength": 512 },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["familyNo", "headOfFamilyName", "address", "rayonId"]
+    },
+    "Announcement": {
+      "title": "Announcement",
+      "description": "Church news, bulletin and public warta announcement",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "maxLength": 256 },
+        "date": { "type": "string", "maxLength": 32 },
+        "category": { "type": "string", "maxLength": 64 },
+        "content": { "type": "string", "maxLength": 4096 },
+        "author": { "type": "string", "maxLength": 128 },
+        "isImportant": { "type": "boolean" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["title", "date", "category", "content", "author"]
+    },
+    "Schedule": {
+      "title": "Schedule",
+      "description": "Weekly service schedule and duty officers",
+      "type": "object",
+      "properties": {
+        "serviceDate": { "type": "string", "maxLength": 32 },
+        "serviceName": { "type": "string", "maxLength": 128 },
+        "preacher": { "type": "string", "maxLength": 128 },
+        "liturgist": { "type": "string", "maxLength": 128 },
+        "elderDuty": { "type": "string", "maxLength": 128 },
+        "deaconDuty": { "type": "string", "maxLength": 128 },
+        "songLeader": { "type": "string", "maxLength": 128 },
+        "musicians": { "type": "string", "maxLength": 128 },
+        "multimediaOperator": { "type": "string", "maxLength": 128 },
+        "usher": { "type": "string", "maxLength": 128 },
+        "bibleReader": { "type": "string", "maxLength": 128 },
+        "notes": { "type": "string", "maxLength": 512 }
+      },
+      "required": ["serviceDate", "serviceName", "preacher", "liturgist"]
+    },
+    "FinancialTransaction": {
+      "title": "FinancialTransaction",
+      "description": "Church treasury finance transaction (income/expense)",
+      "type": "object",
+      "properties": {
+        "txNo": { "type": "string", "maxLength": 64 },
+        "txDate": { "type": "string", "maxLength": 32 },
+        "type": { "type": "string", "enum": ["Pemasukan", "Pengeluaran"] },
+        "category": { "type": "string", "maxLength": 64 },
+        "amount": { "type": "number" },
+        "description": { "type": "string", "maxLength": 512 },
+        "recordedBy": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["txNo", "txDate", "type", "category", "amount", "description"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "Registered system users and church staff access accounts"
+    },
+    "/members/{memberId}": {
+      "schema": { "$ref": "#/entities/Member" },
+      "description": "Church congregation members records"
+    },
+    "/families/{familyId}": {
+      "schema": { "$ref": "#/entities/Family" },
+      "description": "Church family households"
+    },
+    "/announcements/{announcementId}": {
+      "schema": { "$ref": "#/entities/Announcement" },
+      "description": "Weekly church announcements and bulletin articles"
+    },
+    "/schedules/{scheduleId}": {
+      "schema": { "$ref": "#/entities/Schedule" },
+      "description": "Sunday and weekly service duty rosters"
+    },
+    "/financial_transactions/{txId}": {
+      "schema": { "$ref": "#/entities/FinancialTransaction" },
+      "description": "Church treasury ledger entries"
+    }
+  }
+}

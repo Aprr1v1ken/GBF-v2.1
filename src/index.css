@@ -1,0 +1,228 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    color-scheme: dark;
+    font-synthesis: none;
+  }
+
+  html {
+    min-width: 320px;
+    background: #05040d;
+    scroll-behavior: smooth;
+  }
+
+  body {
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+    background-color: #05040d;
+    color: #f8fafc;
+    margin: 0;
+    padding: 0;
+    min-height: 100vh;
+    overflow-x: hidden;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  button, a, input, select, textarea {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  ::selection {
+    background: rgba(34, 211, 238, 0.35);
+    color: #ffffff;
+  }
+}
+
+/* RGB Chroma visual system: colorful, but dark enough for long reading sessions. */
+@keyframes chromaBackgroundShift {
+  0%, 100% { background-position: 0% 0%, 100% 0%, 0% 100%, 100% 100%, 0% 50%; }
+  50% { background-position: 100% 50%, 0% 100%, 100% 0%, 0% 0%, 100% 50%; }
+}
+
+@keyframes chromaRibbonShift {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 200% 50%; }
+}
+
+.chroma-app {
+  background-color: #06040f;
+  background-image:
+    radial-gradient(circle at 8% 4%, rgba(255, 0, 128, 0.20), transparent 34%),
+    radial-gradient(circle at 92% 8%, rgba(0, 210, 255, 0.18), transparent 32%),
+    radial-gradient(circle at 12% 94%, rgba(126, 34, 206, 0.22), transparent 36%),
+    radial-gradient(circle at 92% 88%, rgba(0, 255, 163, 0.12), transparent 34%),
+    linear-gradient(135deg, #070312 0%, #080b1d 46%, #031117 100%);
+  background-size: 150% 150%, 150% 150%, 150% 150%, 150% 150%, 220% 220%;
+  background-attachment: fixed;
+  animation: chromaBackgroundShift 24s ease-in-out infinite;
+}
+
+.chroma-glass {
+  background: linear-gradient(110deg, rgba(12, 7, 32, 0.94), rgba(5, 17, 31, 0.92)) !important;
+  border-color: rgba(34, 211, 238, 0.32) !important;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.24), 0 0 24px rgba(139, 92, 246, 0.08);
+  backdrop-filter: blur(18px);
+}
+
+.chroma-ribbon {
+  height: 3px;
+  width: 100%;
+  background: linear-gradient(90deg, #ff0080, #ff8c00, #faff00, #00ff9d, #00d5ff, #7c3aed, #ff0080);
+  background-size: 200% auto;
+  animation: chromaRibbonShift 8s linear infinite;
+  box-shadow: 0 0 18px rgba(0, 213, 255, 0.45);
+}
+
+.chroma-hero-title {
+  background: linear-gradient(100deg, #ffffff 5%, #67e8f9 28%, #c084fc 50%, #f472b6 68%, #facc15 88%, #ffffff 100%);
+  background-size: 220% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: rgbGlow 9s linear infinite;
+  filter: drop-shadow(0 0 22px rgba(34, 211, 238, 0.16));
+}
+
+.chroma-card {
+  border: 1px solid transparent !important;
+  background:
+    linear-gradient(135deg, rgba(13, 10, 34, 0.95), rgba(5, 18, 30, 0.94)) padding-box,
+    linear-gradient(120deg, rgba(255, 0, 128, 0.65), rgba(0, 213, 255, 0.65), rgba(0, 255, 163, 0.45), rgba(192, 132, 252, 0.65)) border-box !important;
+}
+
+.chroma-sidebar {
+  background: linear-gradient(180deg, rgba(10, 5, 26, 0.98), rgba(3, 15, 26, 0.98)) !important;
+  border-right-color: rgba(34, 211, 238, 0.28) !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .chroma-app { background-attachment: scroll; }
+}
+
+@media print {
+  .chroma-app, .chroma-glass, .chroma-sidebar {
+    background: #ffffff !important;
+    animation: none !important;
+    box-shadow: none !important;
+  }
+  .chroma-ribbon { display: none !important; }
+  .chroma-hero-title {
+    -webkit-text-fill-color: #000000;
+    color: #000000;
+    filter: none;
+  }
+}
+
+.font-cinzel {
+  font-family: 'Cinzel', serif;
+}
+
+.font-mono {
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* RGB Neon Gradient Animation */
+@keyframes rgbGlow {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+@keyframes rgbBorderRotate {
+  0% {
+    filter: hue-rotate(0deg);
+  }
+  100% {
+    filter: hue-rotate(360deg);
+  }
+}
+
+.animate-rgb-glow {
+  background-size: 200% 200%;
+  animation: rgbGlow 6s ease infinite;
+}
+
+.animate-rgb-border {
+  animation: rgbBorderRotate 8s linear infinite;
+}
+
+.rgb-rainbow-gradient {
+  background: linear-gradient(135deg, #ff007f, #7928ca, #0070f3, #00dfd8, #00ff87, #ffcc00, #ff007f);
+  background-size: 300% 300%;
+  animation: rgbGlow 8s ease infinite;
+}
+
+.rgb-text-gradient {
+  background: linear-gradient(90deg, #38bdf8, #818cf8, #c084fc, #f472b6, #fb923c, #4ade80, #38bdf8);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: rgbGlow 5s linear infinite;
+}
+
+/* Media Print Rules - Clean, crisp, high-contrast printing for ID Cards and Reports */
+@media print {
+  @page {
+    size: auto;
+    margin: 8mm;
+  }
+
+  html, body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    overflow: visible !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  aside,
+  nav,
+  header,
+  .no-print,
+  [role="navigation"],
+  button {
+    display: none !important;
+  }
+
+  /* Expand modal containers so only the printable payload shows */
+  .fixed.inset-0 {
+    position: static !important;
+    display: block !important;
+    background: transparent !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    height: auto !important;
+    width: 100% !important;
+  }
+
+  *, *::before, *::after {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .printable-card {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    margin: 0 auto !important;
+  }
+
+  .print-page-break {
+    page-break-after: always !important;
+    break-after: page !important;
+  }
+}

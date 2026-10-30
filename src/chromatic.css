@@ -1,0 +1,299 @@
+/* SYSJEGER signature chromatic typography and printable holographic member card. */
+@property --chroma-hue {
+  syntax: '<angle>';
+  inherits: true;
+  initial-value: 0deg;
+}
+
+@keyframes chromaticHueCycle {
+  from { --chroma-hue: 0deg; }
+  to { --chroma-hue: 360deg; }
+}
+
+@keyframes chromaticFoilShift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+/*
+ * Every screen text inherits the rotating hue. Different element families use
+ * different phases, producing a simultaneous rainbow instead of recoloring the
+ * whole interface with one flat color. Only `color` changes, so existing
+ * gradients, layouts, icons, and component animations remain intact.
+ */
+@media screen {
+  body {
+    --chroma-hue: 0deg;
+    --chroma-text-saturation: 88%;
+    --chroma-text-lightness: 77%;
+    animation: chromaticHueCycle 28s linear infinite;
+  }
+
+  body * {
+    --chroma-text-offset: 0deg;
+    color: hsl(
+      calc(var(--chroma-hue) + var(--chroma-text-offset))
+      var(--chroma-text-saturation)
+      var(--chroma-text-lightness)
+    ) !important;
+  }
+
+  body :where(h1, h2, h3) { --chroma-text-offset: 12deg; }
+  body :where(h4, h5, h6, strong, b) { --chroma-text-offset: 38deg; }
+  body :where(p, li, td, dd, blockquote) { --chroma-text-offset: 72deg; }
+  body :where(span, small, dt, figcaption) { --chroma-text-offset: 118deg; }
+  body :where(a, button) { --chroma-text-offset: 174deg; }
+  body :where(label, th, legend) { --chroma-text-offset: 228deg; }
+  body :where(input, textarea, select) { --chroma-text-offset: 286deg; }
+  body :where(code, pre, kbd, samp) { --chroma-text-offset: 324deg; }
+
+  body :where(h1, h2, h3) {
+    text-shadow: 0 0 22px rgba(56, 189, 248, 0.16), 0 1px 2px rgba(0, 0, 0, 0.45);
+  }
+
+  body :where(button, a) {
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
+  }
+
+  body ::placeholder {
+    color: hsl(calc(var(--chroma-hue) + 286deg) 72% 72%) !important;
+    opacity: 0.72;
+  }
+
+  /* Light paper/surface contexts need jewel tones rather than neon pastels. */
+  body :where(
+    .bg-white, .bg-slate-50, .bg-slate-100, .bg-slate-200,
+    .bg-amber-50, .bg-amber-100, .bg-yellow-50, .bg-emerald-50,
+    .bg-cyan-50, .bg-sky-50, .bg-rose-50, .bg-orange-50,
+    .chromatic-card--light, .gm-style
+  ) {
+    --chroma-text-saturation: 84%;
+    --chroma-text-lightness: 39%;
+  }
+
+  /* Dark surfaces nested inside a light report restore luminous text. */
+  body :where(
+    .bg-black, .bg-slate-700, .bg-slate-800, .bg-slate-900, .bg-slate-950,
+    .chroma-card, .chroma-glass, .chroma-sidebar, .chromatic-member-card
+  ) {
+    --chroma-text-saturation: 88%;
+    --chroma-text-lightness: 79%;
+  }
+
+  body :where(.chromatic-card--light) {
+    --chroma-text-saturation: 82%;
+    --chroma-text-lightness: 36%;
+  }
+
+  body :where(
+    .bg-amber-400, .bg-amber-500, .bg-cyan-400, .bg-cyan-500,
+    .bg-emerald-400, .bg-yellow-400,
+    .from-amber-400, .from-amber-500, .from-cyan-400, .from-cyan-500,
+    .from-emerald-400, .from-yellow-300, .from-yellow-400
+  ) {
+    --chroma-text-saturation: 82%;
+    --chroma-text-lightness: 25%;
+  }
+
+  body option { --chroma-text-lightness: 34%; }
+}
+
+/* Printable holographic foil frame. The physical ID-1 dimensions stay inline. */
+.chromatic-member-card {
+  isolation: isolate;
+  border: 1px solid rgba(125, 211, 252, 0.82) !important;
+  box-shadow:
+    0 0 0 1px rgba(244, 114, 182, 0.42),
+    0 18px 60px rgba(2, 6, 23, 0.52),
+    0 0 34px rgba(168, 85, 247, 0.20) !important;
+}
+
+.chromatic-member-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image:
+    radial-gradient(circle at 12% 10%, rgba(255, 255, 255, 0.24), transparent 24%),
+    radial-gradient(circle at 88% 18%, rgba(34, 211, 238, 0.24), transparent 30%),
+    radial-gradient(circle at 76% 96%, rgba(244, 114, 182, 0.22), transparent 34%),
+    repeating-radial-gradient(ellipse at 15% 115%, transparent 0 10px, rgba(125, 211, 252, 0.10) 10.5px 11px, transparent 11.5px 21px),
+    repeating-radial-gradient(ellipse at 85% -15%, transparent 0 13px, rgba(244, 114, 182, 0.08) 13.5px 14px, transparent 14.5px 27px),
+    repeating-linear-gradient(118deg, transparent 0, transparent 11px, rgba(255, 255, 255, 0.035) 12px, transparent 13px),
+    linear-gradient(105deg, transparent 12%, rgba(250, 204, 21, 0.09) 29%, rgba(34, 211, 238, 0.11) 48%, rgba(192, 132, 252, 0.10) 69%, transparent 88%);
+  opacity: 0.72;
+}
+
+.chromatic-member-card::after {
+  content: '';
+  position: absolute;
+  inset: 3px;
+  z-index: 18;
+  border: 1px solid rgba(255, 255, 255, 0.20);
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.chromatic-card--light::before { opacity: 0.30; }
+.chromatic-card--light::after { border-color: rgba(120, 53, 15, 0.20); }
+
+.chromatic-card-spectrum {
+  position: absolute;
+  z-index: 16;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  pointer-events: none;
+  background: linear-gradient(90deg, #ff3d9a, #ff9f43, #f8e16c, #5ef2b8, #4cc9ff, #a78bfa, #ff3d9a);
+  background-size: 200% auto;
+  box-shadow: 0 0 14px rgba(76, 201, 255, 0.58);
+  animation: chromaticFoilShift 7s linear infinite;
+}
+
+.chromatic-card-microtext {
+  position: absolute;
+  z-index: 4;
+  left: 8px;
+  right: 8px;
+  bottom: 2px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-align: center;
+  font-size: 4.5px;
+  line-height: 1;
+  letter-spacing: 0.22em;
+  font-weight: 700;
+  opacity: 0.48;
+  pointer-events: none;
+}
+
+.chromatic-holo-seal {
+  width: 42px;
+  height: 42px;
+  flex: none;
+  padding: 2px;
+  border-radius: 9999px;
+  background: linear-gradient(135deg, #f8e16c, #ff3d9a, #a78bfa, #4cc9ff, #5ef2b8, #f8e16c);
+  background-size: 180% 180%;
+  box-shadow: 0 0 18px rgba(76, 201, 255, 0.32), inset 0 0 8px rgba(255, 255, 255, 0.50);
+}
+
+.chromatic-holo-seal > span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  background: rgba(5, 8, 24, 0.90);
+  border: 1px solid rgba(255, 255, 255, 0.30);
+  color: #ffffff !important;
+  font-size: 7px;
+  font-weight: 900;
+  letter-spacing: 0.10em;
+  text-shadow: 0 0 6px rgba(76, 201, 255, 0.75);
+}
+
+.chromatic-card--light .chromatic-holo-seal > span {
+  background: rgba(255, 251, 235, 0.92);
+  color: #713f12 !important;
+  text-shadow: none;
+}
+
+.chromatic-foil-text {
+  background: linear-gradient(100deg, #ffffff 0%, #f8e16c 24%, #7dd3fc 48%, #f0abfc 70%, #5ef2b8 88%, #ffffff 100%) !important;
+  background-size: 180% auto !important;
+  -webkit-background-clip: text !important;
+  background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.45));
+}
+
+.chromatic-card--light .chromatic-foil-text {
+  background: linear-gradient(100deg, #713f12, #be185d, #6d28d9, #0369a1, #047857) !important;
+  -webkit-background-clip: text !important;
+  background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  filter: none;
+}
+
+.chromatic-photo-frame {
+  border-color: rgba(103, 232, 249, 0.90) !important;
+  box-shadow:
+    0 0 0 1px rgba(244, 114, 182, 0.72),
+    0 0 20px rgba(34, 211, 238, 0.24),
+    inset 0 0 16px rgba(2, 6, 23, 0.30) !important;
+}
+
+.chromatic-logo-frame {
+  box-shadow: 0 0 0 1px rgba(248, 225, 108, 0.70), 0 0 16px rgba(34, 211, 238, 0.24);
+}
+
+.chromatic-card-badge {
+  border: 1px solid rgba(125, 211, 252, 0.55) !important;
+  background: linear-gradient(110deg, rgba(168, 85, 247, 0.25), rgba(34, 211, 238, 0.20), rgba(244, 114, 182, 0.22)) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16), 0 0 12px rgba(168, 85, 247, 0.16);
+}
+
+/* Compact refinements for the exact 85.60 × 53.98 mm print/PNG card. */
+.printable-member-id-card .chromatic-card-spectrum { height: 0.65mm; }
+.printable-member-id-card::after { inset: 0.35mm; border-width: 0.20mm; }
+.printable-member-id-card .chromatic-card-microtext {
+  left: 2mm;
+  right: 2mm;
+  bottom: 0.35mm;
+  font-size: 2.2pt;
+  letter-spacing: 0.15em;
+}
+.printable-member-id-card .chromatic-holo-seal {
+  width: 8mm;
+  height: 8mm;
+  padding: 0.30mm;
+  box-shadow: 0 0 2mm rgba(76, 201, 255, 0.32);
+}
+.printable-member-id-card .chromatic-holo-seal > span {
+  font-size: 3.1pt;
+  border-width: 0.15mm;
+}
+.printable-member-id-card .chromatic-photo-frame {
+  box-shadow: 0 0 0 0.25mm rgba(244, 114, 182, 0.72), 0 0 2mm rgba(34, 211, 238, 0.24) !important;
+}
+
+@media print {
+  /* Card-only mode must not include the application behind the modal. */
+  .chroma-app:has(> .member-card-print-mode) > :not(.member-card-print-mode) {
+    display: none !important;
+  }
+
+  .member-card-print-mode > div {
+    width: 85.6mm !important;
+    max-width: 85.6mm !important;
+    height: 53.98mm !important;
+    max-height: 53.98mm !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    overflow: hidden !important;
+  }
+
+  .member-card-print-mode > div > div {
+    width: 85.6mm !important;
+    height: 53.98mm !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+  }
+
+  .chromatic-member-card { box-shadow: none !important; }
+  .chromatic-card-spectrum { animation: none !important; }
+  .chromatic-foil-text { filter: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body { --chroma-hue: 318deg; }
+  .chromatic-card-spectrum { background-position: 50% 50%; }
+}

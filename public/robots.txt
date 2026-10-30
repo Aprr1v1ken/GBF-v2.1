@@ -1,0 +1,6 @@
+# GMIT Betel Fuimelang — public website
+User-agent: *
+Allow: /
+Disallow: /api/
+
+Sitemap: https://gmit-betel-fuimelang.vercel.app/sitemap.xml

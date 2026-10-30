@@ -1,0 +1,137 @@
+import { pgTable, text, serial, integer, boolean, timestamp, real } from 'drizzle-orm/pg-core';
+
+export const users = pgTable('users', {
+  id: serial('id').primaryKey(),
+  uid: text('uid').unique(), // Firebase Auth UID
+  username: text('username').notNull().unique(),
+  name: text('name').notNull(),
+  email: text('email'),
+  role: text('role').notNull().default('Admin Gereja'),
+  rayonId: text('rayon_id'),
+  memberId: text('member_id'),
+  phone: text('phone'),
+  status: text('status').notNull().default('Aktif'),
+  createdAt: timestamp('created_at').defaultNow(),
+});
+
+export const members = pgTable('members', {
+  id: text('id').primaryKey(),
+  memberNo: text('member_no').notNull(),
+  fullName: text('full_name').notNull(),
+  nickname: text('nickname'),
+  nik: text('nik'),
+  familyCardNo: text('family_card_no'),
+  familyId: text('family_id'),
+  familyName: text('family_name'),
+  familyRole: text('family_role').notNull().default('Kepala Keluarga'),
+  gender: text('gender').notNull().default('Laki-laki'),
+  birthPlace: text('birth_place'),
+  birthDate: text('birth_date').notNull(),
+  address: text('address').notNull(),
+  kelurahan: text('kelurahan'),
+  kecamatan: text('kecamatan'),
+  kabupaten: text('kabupaten'),
+  phone: text('phone'),
+  email: text('email'),
+  maritalStatus: text('marital_status'),
+  spouseName: text('spouse_name'),
+  rayonId: text('rayon_id').notNull(),
+  rayonName: text('rayon_name'),
+  categorialGroupId: text('categorial_group_id'),
+  categorialGroupName: text('categorial_group_name'),
+  membershipStatus: text('membership_status').notNull().default('Tetap'),
+  baptismStatus: text('baptism_status').notNull().default('Belum'),
+  baptismDate: text('baptism_date'),
+  confirmationStatus: text('confirmation_status').notNull().default('Belum'),
+  confirmationDate: text('confirmation_date'),
+  marriageChurchStatus: text('marriage_church_status').notNull().default('Belum'),
+  marriageDate: text('marriage_date'),
+  education: text('education'),
+  occupation: text('occupation'),
+  joinDate: text('join_date'),
+  status: text('status').notNull().default('Aktif'),
+  notes: text('notes'),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+});
+
+export const families = pgTable('families', {
+  id: text('id').primaryKey(),
+  familyNo: text('family_no').notNull(),
+  headOfFamilyName: text('head_of_family_name').notNull(),
+  headOfFamilyId: text('head_of_family_id'),
+  address: text('address').notNull(),
+  rayonId: text('rayon_id').notNull(),
+  rayonName: text('rayon_name'),
+  phone: text('phone'),
+  memberCount: integer('member_count').notNull().default(0),
+  notes: text('notes'),
+  latitude: real('latitude'),
+  longitude: real('longitude'),
+  createdAt: timestamp('created_at').defaultNow(),
+});
+
+export const rayons = pgTable('rayons', {
+  id: text('id').primaryKey(),
+  code: text('code').notNull().unique(),
+  name: text('name').notNull(),
+  leaderName: text('leader_name').notNull(),
+  leaderPhone: text('leader_phone'),
+  coverageArea: text('coverage_area'),
+  notes: text('notes'),
+  latitude: real('latitude'),
+  longitude: real('longitude'),
+});
+
+export const churchLocations = pgTable('church_locations', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  category: text('category').notNull(),
+  latitude: real('latitude').notNull(),
+  longitude: real('longitude').notNull(),
+  address: text('address'),
+  leaderName: text('leader_name'),
+  phone: text('phone'),
+  notes: text('notes'),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+});
+
+export const announcements = pgTable('announcements', {
+  id: text('id').primaryKey(),
+  title: text('title').notNull(),
+  date: text('date').notNull(),
+  category: text('category').notNull(),
+  content: text('content').notNull(),
+  author: text('author').notNull(),
+  isImportant: boolean('is_important').default(false),
+  createdAt: timestamp('created_at').defaultNow(),
+});
+
+export const schedules = pgTable('schedules', {
+  id: text('id').primaryKey(),
+  serviceDate: text('service_date').notNull(),
+  serviceName: text('service_name').notNull(),
+  preacher: text('preacher').notNull(),
+  liturgist: text('liturgist').notNull(),
+  elderDuty: text('elder_duty'),
+  deaconDuty: text('deacon_duty'),
+  songLeader: text('song_leader'),
+  musicians: text('musicians'),
+  multimediaOperator: text('multimedia_operator'),
+  usher: text('usher'),
+  bibleReader: text('bible_reader'),
+  notes: text('notes'),
+});
+
+export const financialTransactions = pgTable('financial_transactions', {
+  id: text('id').primaryKey(),
+  txNo: text('tx_no').notNull(),
+  txDate: text('tx_date').notNull(),
+  type: text('type').notNull(),
+  category: text('category').notNull(),
+  amount: integer('amount').notNull(),
+  description: text('description').notNull(),
+  recordedBy: text('recorded_by').notNull(),
+  createdAt: timestamp('created_at').defaultNow(),
+});
