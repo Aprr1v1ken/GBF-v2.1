@@ -1,26 +1,31 @@
 import React, { useState } from 'react';
-import { Home, Plus, Search, Eye, Trash2, Printer, Users, Edit, MapPin } from 'lucide-react';
+import { Home, Plus, Search, Eye, Trash2, Printer, Users, Edit, MapPin, Upload, Download } from 'lucide-react';
 import { formatDateDMY } from '../../utils/church-logic.ts';
-import type { Family, Member, Rayon } from '../../types/index.ts';
+import type { Family, Member, Rayon, CategorialGroup } from '../../types/index.ts';
+import { downloadExcelTemplate } from '../../utils/excel-import-export.ts';
 
 interface FamiliesViewProps {
   families: Family[];
   members: Member[];
   rayons: Rayon[];
+  categorials?: CategorialGroup[];
   onOpenAddModal: () => void;
   onEditFamily?: (fam: Family) => void;
   onDeleteFamily: (id: string) => void;
   onOpenPrintReport: () => void;
+  onOpenImportModal?: () => void;
 }
 
 export const FamiliesView: React.FC<FamiliesViewProps> = ({
   families,
   members,
   rayons,
+  categorials = [],
   onOpenAddModal,
   onEditFamily,
   onDeleteFamily,
   onOpenPrintReport,
+  onOpenImportModal,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedRayon, setSelectedRayon] = useState('all');
@@ -56,7 +61,7 @@ export const FamiliesView: React.FC<FamiliesViewProps> = ({
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={onOpenAddModal}
             className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 transition-colors shadow-sm cursor-pointer"
@@ -64,9 +69,30 @@ export const FamiliesView: React.FC<FamiliesViewProps> = ({
             <Plus className="w-4 h-4" />
             <span>+ Buat KK Baru</span>
           </button>
+
+          <button
+            onClick={() => downloadExcelTemplate(rayons, categorials)}
+            className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-emerald-600/90 hover:bg-emerald-500 text-white transition-colors border border-emerald-500/40 cursor-pointer shadow-xs"
+            title="Unduh Format / Template Excel (.xlsx) untuk input KK & Jemaat"
+          >
+            <Download className="w-3.5 h-3.5 text-emerald-200" />
+            <span>Unduh Format Excel</span>
+          </button>
+
+          {onOpenImportModal && (
+            <button
+              onClick={onOpenImportModal}
+              className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-amber-500/10 border border-amber-500/40 text-amber-300 hover:bg-amber-500/20 transition-colors cursor-pointer"
+              title="Impor Data KK & Anggota Keluarga dari Excel"
+            >
+              <Upload className="w-3.5 h-3.5 text-amber-400" />
+              <span>Impor Excel KK &amp; Jemaat</span>
+            </button>
+          )}
+
           <button
             onClick={onOpenPrintReport}
-            className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg bg-slate-800 border border-slate-700 text-slate-200 hover:bg-slate-700 transition-colors"
+            className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg bg-slate-800 border border-slate-700 text-slate-200 hover:bg-slate-700 transition-colors cursor-pointer"
           >
             <Printer className="w-3.5 h-3.5 text-blue-400" />
             <span>Cetak Buku KK</span>

@@ -10,13 +10,14 @@ const TABLES = [
   'baptisms', 'confirmations', 'marriages', 'member_mutations', 'events',
   'service_schedules', 'attendance_records', 'financial_transactions', 'church_settings', 'church_locations', 'documents',
   'announcements', 'activity_images', 'data_correction_requests', 'audit_logs',
+  'n8n_config', 'whatsapp_inbox', 'service_registrations',
 ] as const;
 
 type TableName = typeof TABLES[number];
 type Snapshot = { version: 1; savedAt: string; tables: Record<TableName, any[]> };
 // Newly introduced tables may be absent from an older durable snapshot. Their
 // clean schema/default rows are retained while all pre-existing tables restore.
-const DEFAULTED_SNAPSHOT_TABLES = new Set<TableName>(['church_settings', 'church_locations']);
+const DEFAULTED_SNAPSHOT_TABLES = new Set<TableName>(['church_settings', 'church_locations', 'n8n_config', 'whatsapp_inbox', 'service_registrations']);
 
 let pool: Pool | null = null;
 let preparePromise: Promise<void> | null = null;

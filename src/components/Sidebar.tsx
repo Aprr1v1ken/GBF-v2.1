@@ -25,6 +25,7 @@ import {
   Sparkles,
   Compass,
   Cloud,
+  Bot,
 } from 'lucide-react';
 import type { User } from '../types/index.ts';
 
@@ -86,6 +87,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       title: 'PORTAL & SISTEM',
       items: [
         { id: 'portal', label: 'Portal Khusus Jemaat', icon: UserCheck },
+        { id: 'n8n', label: 'Bot WA & n8n Gateway', icon: Bot, badge: 'Baru' },
         { id: 'settings', label: 'Pengaturan & Instal HP', icon: Settings },
         { id: 'backup', label: 'Impor & Backup Data', icon: Database },
         { id: 'audit', label: 'Log Aktivitas Sistem', icon: History },

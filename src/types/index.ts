@@ -414,3 +414,36 @@ export interface CardThemeConfig {
   subtextColor: string;
   isLight?: boolean;
 }
+
+export interface N8nIntegrationConfig {
+  apiKey: string;
+  isEnabled: boolean;
+  webhookUrl: string;
+  autoBroadcastWarta: boolean;
+  notes: string;
+  updatedAt?: string;
+}
+
+export interface WhatsAppInboxItem {
+  id: string;
+  sender_phone: string;
+  sender_name?: string;
+  message_type: string;
+  message_text: string;
+  status: string;
+  reply_notes?: string;
+  created_at: string;
+}
+
+export interface ServiceRegistration {
+  id: string;
+  serviceType: 'baptis' | 'nikah' | 'sidi';
+  applicantName: string;
+  applicantPhone?: string;
+  details: Record<string, any>;
+  status: 'Menunggu Verifikasi' | 'Disetujui' | 'Ditolak' | 'Selesai';
+  adminNotes?: string;
+  googleFormResponseId?: string;
+  createdAt: string;
+}
+

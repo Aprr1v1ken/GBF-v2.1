@@ -660,4 +660,116 @@ export async function purgeSampleDataApi() {
   return res.json();
 }
 
+// n8n WhatsApp Bot Gateway API functions
+export async function fetchN8nConfigApi() {
+  const res = await apiFetch(`${API_BASE}/n8n/config`);
+  return res.json();
+}
+
+export async function updateN8nConfigApi(data: {
+  isEnabled?: boolean;
+  webhookUrl?: string;
+  autoBroadcastWarta?: boolean;
+  notes?: string;
+  regenerateKey?: boolean;
+}) {
+  const res = await apiFetch(`${API_BASE}/n8n/config`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
+export async function fetchN8nInboxApi() {
+  const res = await apiFetch(`${API_BASE}/n8n/inbox`);
+  return res.json();
+}
+
+export async function testN8nWebhookApi(webhookUrl?: string) {
+  const res = await apiFetch(`${API_BASE}/n8n/test-webhook`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ webhookUrl }),
+  });
+  return res.json();
+}
+
+export async function testN8nMemberLookupApi(query: string, apiKey?: string) {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (apiKey) headers['X-N8N-API-KEY'] = apiKey;
+  const res = await apiFetch(`${API_BASE}/n8n/members/lookup`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ query }),
+  });
+  return res.json();
+}
+
+export async function testN8nLatestWartaApi(apiKey?: string) {
+  const headers: Record<string, string> = {};
+  if (apiKey) headers['X-N8N-API-KEY'] = apiKey;
+  const res = await apiFetch(`${API_BASE}/n8n/warta/latest`, { headers });
+  return res.json();
+}
+
+export async function testN8nSchedulesApi(apiKey?: string) {
+  const headers: Record<string, string> = {};
+  if (apiKey) headers['X-N8N-API-KEY'] = apiKey;
+  const res = await apiFetch(`${API_BASE}/n8n/schedules/upcoming`, { headers });
+  return res.json();
+}
+
+export async function testN8nSubmitPrayerApi(data: { senderPhone: string; senderName: string; messageText: string; messageType?: string }, apiKey?: string) {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (apiKey) headers['X-N8N-API-KEY'] = apiKey;
+  const res = await apiFetch(`${API_BASE}/n8n/inbox/submit`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
+// Online Service Registrations (Baptisan & Pernikahan via Google Forms API / Self-Service)
+export async function fetchServiceRegistrationsApi(params?: { type?: string; status?: string }) {
+  const query = new URLSearchParams();
+  if (params?.type) query.set('type', params.type);
+  if (params?.status) query.set('status', params.status);
+  const qs = query.toString() ? `?${query.toString()}` : '';
+  const res = await apiFetch(`${API_BASE}/service-registrations${qs}`);
+  return res.json();
+}
+
+export async function submitServiceRegistrationApi(data: {
+  serviceType: 'baptis' | 'nikah' | 'sidi';
+  applicantName: string;
+  applicantPhone?: string;
+  details: Record<string, any>;
+  googleFormResponseId?: string;
+}) {
+  const res = await apiFetch(`${API_BASE}/service-registrations`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
+export async function updateServiceRegistrationStatusApi(id: string, status: string, adminNotes?: string) {
+  const res = await apiFetch(`${API_BASE}/service-registrations/${id}/status`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status, adminNotes }),
+  });
+  return res.json();
+}
+
+export async function deleteServiceRegistrationApi(id: string) {
+  const res = await apiFetch(`${API_BASE}/service-registrations/${id}`, { method: 'DELETE' });
+  return res.json();
+}
+
+
+
 

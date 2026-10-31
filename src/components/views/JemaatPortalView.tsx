@@ -10,9 +10,11 @@ import {
   CheckCircle2,
   AlertCircle,
   FileText,
+  ClipboardList,
 } from 'lucide-react';
 import { calculateAge, formatDateDMY } from '../../utils/church-logic.ts';
 import type { Member, Family, ServiceSchedule, DataCorrectionRequest } from '../../types/index.ts';
+import { OnlineServiceFormsModal } from '../OnlineServiceFormsModal.tsx';
 
 interface JemaatPortalViewProps {
   currentMember: Member;
@@ -36,6 +38,7 @@ export const JemaatPortalView: React.FC<JemaatPortalViewProps> = ({
   const [details, setDetails] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
+  const [showServiceForm, setShowServiceForm] = useState(false);
 
   const age = calculateAge(currentMember.birthDate);
 
@@ -71,13 +74,23 @@ export const JemaatPortalView: React.FC<JemaatPortalViewProps> = ({
           </p>
         </div>
 
-        <button
-          onClick={onPrintCard}
-          className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 transition-colors shadow-md cursor-pointer self-start sm:self-auto"
-        >
-          <Printer className="w-4 h-4" />
-          <span>Cetak Kartu Jemaat Digital</span>
-        </button>
+        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+          <button
+            onClick={() => setShowServiceForm(true)}
+            className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 transition-colors shadow-md cursor-pointer"
+          >
+            <ClipboardList className="w-4 h-4" />
+            <span>Daftar Baptisan / Nikah Online</span>
+          </button>
+
+          <button
+            onClick={onPrintCard}
+            className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 transition-colors shadow-md cursor-pointer"
+          >
+            <Printer className="w-4 h-4" />
+            <span>Cetak Kartu Jemaat Digital</span>
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -256,6 +269,13 @@ export const JemaatPortalView: React.FC<JemaatPortalViewProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Online Service Registration Modal for Congregants */}
+      <OnlineServiceFormsModal
+        isOpen={showServiceForm}
+        onClose={() => setShowServiceForm(false)}
+        initialTab="baptis"
+      />
     </div>
   );
 };

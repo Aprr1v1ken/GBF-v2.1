@@ -1,13 +1,16 @@
 import React, { useState } from 'react';
-import { FileText, Plus, Calendar, User, Pin, CheckCircle2, Edit2, Trash2, X, Image as ImageIcon, Upload, ExternalLink, RefreshCw, AlertCircle } from 'lucide-react';
-import type { Announcement } from '../../types/index.ts';
+import { FileText, Plus, Calendar, User, Pin, CheckCircle2, Edit2, Trash2, X, Image as ImageIcon, Upload, ExternalLink, RefreshCw, AlertCircle, Share2, Send } from 'lucide-react';
+import type { Announcement, ChurchSettings, Rayon } from '../../types/index.ts';
 import { getWorkspaceAccessToken, createGoogleDoc } from '../../services/workspace.ts';
+import { BroadcastWartaModal } from '../BroadcastWartaModal.tsx';
 
 interface AnnouncementsViewProps {
   announcements: Announcement[];
   onAddAnnouncement: (data: Partial<Announcement>) => Promise<void>;
   onUpdateAnnouncement?: (id: string, data: Partial<Announcement>) => Promise<void>;
   onDeleteAnnouncement?: (id: string) => Promise<void>;
+  churchSettings?: ChurchSettings;
+  rayons?: Rayon[];
 }
 
 export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({
@@ -15,9 +18,13 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({
   onAddAnnouncement,
   onUpdateAnnouncement,
   onDeleteAnnouncement,
+  churchSettings,
+  rayons = [],
 }) => {
   const [showModal, setShowModal] = useState(false);
   const [editingAnnouncement, setEditingAnnouncement] = useState<Announcement | null>(null);
+  const [showBroadcastModal, setShowBroadcastModal] = useState(false);
+  const [broadcastTargetItem, setBroadcastTargetItem] = useState<Announcement | null>(null);
 
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState<any>('Warta Ibadah');
@@ -182,13 +189,27 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({
           </p>
         </div>
 
-        <button
-          onClick={openAddModal}
-          className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 transition-colors shadow-sm cursor-pointer"
-        >
-          <Plus className="w-4 h-4" />
-          <span>+ Terbitkan Warta Baru</span>
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => {
+              setBroadcastTargetItem(null);
+              setShowBroadcastModal(true);
+            }}
+            className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white transition-colors shadow-sm cursor-pointer"
+            title="Kirim dan bagikan warta dengan format WhatsApp yang rapi ke grup jemaat"
+          >
+            <Share2 className="w-4 h-4" />
+            <span>Broadcast Warta (WhatsApp)</span>
+          </button>
+
+          <button
+            onClick={openAddModal}
+            className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 transition-colors shadow-sm cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            <span>+ Terbitkan Warta Baru</span>
+          </button>
+        </div>
       </div>
 
       {/* Announcements List */}
@@ -199,13 +220,15 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({
           <p className="text-xs text-slate-400 max-w-md mx-auto">
             Daftar warta dan pengumuman jemaat saat ini kosong. Anda dapat menambahkan warta baru sekarang atau mengenerate menggunakan Asisten AI Berita & Bakti Jumat.
           </p>
-          <button
-            onClick={openAddModal}
-            className="mt-2 inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 transition-colors cursor-pointer"
-          >
-            <Plus className="w-4 h-4" />
-            <span>+ Terbitkan Warta Baru</span>
-          </button>
+          <div className="flex items-center justify-center gap-2 mt-2">
+            <button
+              onClick={openAddModal}
+              className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 transition-colors cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              <span>+ Terbitkan Warta Baru</span>
+            </button>
+          </div>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -280,7 +303,19 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({
                   </span>
                 </div>
 
-                <div className="flex items-center gap-1.5 self-end sm:self-auto">
+                <div className="flex flex-wrap items-center gap-1.5 self-end sm:self-auto">
+                  <button
+                    onClick={() => {
+                      setBroadcastTargetItem(a);
+                      setShowBroadcastModal(true);
+                    }}
+                    className="px-2.5 py-1 rounded-lg bg-emerald-950/70 hover:bg-emerald-900 text-emerald-300 hover:text-white border border-emerald-500/40 text-[10px] font-semibold flex items-center gap-1 transition cursor-pointer"
+                    title="Kirim warta ini ke WhatsApp"
+                  >
+                    <Share2 className="w-3 h-3 text-emerald-400" />
+                    <span>Broadcast WA</span>
+                  </button>
+
                   {exportedDocLinks[a.id] ? (
                     <a
                       href={exportedDocLinks[a.id]}
@@ -448,6 +483,19 @@ export const AnnouncementsView: React.FC<AnnouncementsViewProps> = ({
           </div>
         </div>
       )}
+
+      {/* WhatsApp Broadcast Modal */}
+      <BroadcastWartaModal
+        isOpen={showBroadcastModal}
+        onClose={() => {
+          setShowBroadcastModal(false);
+          setBroadcastTargetItem(null);
+        }}
+        announcements={announcements}
+        initialAnnouncement={broadcastTargetItem}
+        churchSettings={churchSettings}
+        rayons={rayons}
+      />
     </div>
   );
 };

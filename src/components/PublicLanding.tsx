@@ -30,9 +30,11 @@ import {
   Music,
   Baby,
   HelpCircle,
+  ClipboardList,
 } from 'lucide-react';
 import { usePWAInstall } from '../hooks/usePWAInstall.ts';
 import type { Announcement, ChurchEvent, ServiceSchedule, Member, Family, Rayon, CategorialGroup, User } from '../types/index.ts';
+import { OnlineServiceFormsModal } from './OnlineServiceFormsModal.tsx';
 
 interface PublicLandingProps {
   onEnterApp: () => void;
@@ -67,6 +69,7 @@ export const PublicLanding: React.FC<PublicLandingProps> = ({
   const [showInstallGuide, setShowInstallGuide] = useState(false);
   const [wartaTheme, setWartaTheme] = useState<'rgb' | 'neon' | 'emerald'>('rgb');
   const [selectedWartaCategory, setSelectedWartaCategory] = useState<string>('Semua');
+  const [showOnlineServiceModal, setShowOnlineServiceModal] = useState(false);
 
   const handleInstallClick = async () => {
     if (isInstalled) return;
@@ -282,6 +285,14 @@ export const PublicLanding: React.FC<PublicLandingProps> = ({
             >
               Jadwal Ibadah & Warta
             </a>
+            <button
+              onClick={() => setShowOnlineServiceModal(true)}
+              className="px-5 py-3 rounded-xl bg-cyan-600/20 hover:bg-cyan-600/30 text-cyan-300 border border-cyan-500/50 font-semibold text-sm transition-colors flex items-center gap-2 cursor-pointer shadow-md"
+            >
+              <ClipboardList className="w-4 h-4 text-cyan-400" />
+              <span>Daftar Baptisan & Nikah Online</span>
+            </button>
+
             {!isInstalled && (
               <button
                 onClick={handleInstallClick}
@@ -1074,6 +1085,13 @@ export const PublicLanding: React.FC<PublicLandingProps> = ({
           </div>
         </div>
       )}
+
+      {/* Modal Pelayanan Online (Baptisan & Nikah) */}
+      <OnlineServiceFormsModal
+        isOpen={showOnlineServiceModal}
+        onClose={() => setShowOnlineServiceModal(false)}
+        rayons={rayons}
+      />
     </div>
   );
 };

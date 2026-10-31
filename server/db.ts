@@ -339,6 +339,39 @@ function initSchema(db: DatabaseSync) {
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS n8n_config (
+      id TEXT PRIMARY KEY,
+      api_key TEXT NOT NULL,
+      is_enabled INTEGER DEFAULT 1,
+      webhook_url TEXT,
+      auto_broadcast_warta INTEGER DEFAULT 1,
+      notes TEXT,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS whatsapp_inbox (
+      id TEXT PRIMARY KEY,
+      sender_phone TEXT NOT NULL,
+      sender_name TEXT,
+      message_type TEXT NOT NULL,
+      message_text TEXT NOT NULL,
+      status TEXT DEFAULT 'Baru',
+      reply_notes TEXT,
+      created_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS service_registrations (
+      id TEXT PRIMARY KEY,
+      service_type TEXT NOT NULL,
+      applicant_name TEXT NOT NULL,
+      applicant_phone TEXT,
+      details_json TEXT NOT NULL,
+      status TEXT DEFAULT 'Menunggu Verifikasi',
+      admin_notes TEXT,
+      google_form_response_id TEXT,
+      created_at TEXT NOT NULL
+    );
   `);
 
   // Column upgrades for existing databases
@@ -407,6 +440,22 @@ function initSchema(db: DatabaseSync) {
     'Sekretaris Majelis Jemaat',
     new Date().toISOString(),
   );
+
+  // Seed default n8n configuration if not already configured
+  try {
+    const existingN8n = db.prepare('SELECT id FROM n8n_config WHERE id = ?').get('default');
+    if (!existingN8n) {
+      db.prepare(`
+        INSERT INTO n8n_config
+        (id, api_key, is_enabled, webhook_url, auto_broadcast_warta, notes, updated_at)
+        VALUES (?, ?, 1, '', 1, 'Koneksi n8n WhatsApp Bot GMIT Betel Fuimelang', ?)
+      `).run(
+        'default',
+        'n8n_bf_' + Math.random().toString(36).substring(2, 12) + Math.random().toString(36).substring(2, 12),
+        new Date().toISOString()
+      );
+    }
+  } catch {}
 
   // Never delete records during startup. Vercel may create a fresh serverless
   // instance at any time; destructive "demo cleanup" here would erase real data.

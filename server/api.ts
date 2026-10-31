@@ -15,6 +15,7 @@ import { persistSnapshot, persistenceEnabled, persistenceMode, preparePersistenc
 import { aiRouter } from './ai.ts';
 import { adminCrudRouter } from './admin-crud.ts';
 import { webAuthnRouter } from './webauthn.ts';
+import { n8nRouter } from './n8n.ts';
 import {
   generateMemberNo,
   generateFamilyNo,
@@ -65,7 +66,7 @@ const PUBLIC_READ_PATHS = new Set(['/health', '/stats', '/events', '/schedules',
 apiRouter.use((req, res, next) => {
   const path = req.path.replace(/\/$/, '') || '/';
   const publicWebAuthn = path === '/auth/webauthn/authentication-options' || path === '/auth/webauthn/authenticate';
-  if (req.method === 'OPTIONS' || path === '/auth/login' || path === '/auth/google' || publicWebAuthn) return next();
+  if (req.method === 'OPTIONS' || path === '/auth/login' || path === '/auth/google' || path.startsWith('/n8n') || (path === '/service-registrations' && req.method === 'POST') || publicWebAuthn) return next();
   if (req.method === 'GET' && path === '/ai/status') return next();
   if (req.method === 'GET' && PUBLIC_READ_PATHS.has(path)) return next();
 
@@ -91,8 +92,9 @@ apiRouter.use((req, res, next) => {
   next();
 });
 
-// Mount AI services and additional Super Admin CRUD controls
+// Mount AI services, n8n gateway, and additional Super Admin CRUD controls
 apiRouter.use('/ai', aiRouter);
+apiRouter.use('/n8n', n8nRouter);
 apiRouter.use(adminCrudRouter);
 apiRouter.use('/auth/webauthn', webAuthnRouter);
 
@@ -1612,6 +1614,32 @@ apiRouter.post('/announcements', (req, res) => {
     `).run(id, data.title, data.date || now, data.category || 'Warta Ibadah', data.content, data.author || 'Sekretariat Majelis', data.isImportant ? 1 : 0, data.imageUrl || '');
 
     addAuditLog('admin', 'Admin', 'Terbitkan Warta', 'Warta & Pengumuman', `Menerbitkan warta jemaat: ${data.title}`);
+
+    // Asynchronously notify n8n WhatsApp workflow if configured
+    try {
+      const n8n = db.prepare('SELECT webhook_url, is_enabled, auto_broadcast_warta FROM n8n_config WHERE id = ?').get('default') as any;
+      if (n8n?.is_enabled && n8n?.auto_broadcast_warta && n8n?.webhook_url) {
+        fetch(n8n.webhook_url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'User-Agent': 'SYSJEGER-n8n/2.1' },
+          body: JSON.stringify({
+            event: 'warta.published',
+            church: 'GMIT Betel Fuimelang',
+            announcement: {
+              id,
+              title: data.title,
+              date: data.date || now,
+              category: data.category || 'Warta Ibadah',
+              content: data.content,
+              author: data.author || 'Sekretariat Majelis',
+              isImportant: Boolean(data.isImportant),
+            },
+            timestamp: new Date().toISOString(),
+          }),
+        }).catch((err) => console.warn('[n8n Webhook] Failed to dispatch announcement:', err?.message));
+      }
+    } catch {}
+
     res.json({ success: true, message: 'Warta jemaat berhasil diterbitkan', id });
   } catch (err: any) {
     res.status(500).json({ success: false, message: err.message });
@@ -1892,7 +1920,7 @@ apiRouter.get('/audit-logs', (req, res) => {
   res.json({ success: true, logs: rows });
 });
 
-// 16. Import Batch
+// 16. Import Batch (Members & Automatic Kartu Keluarga/Families Creation)
 apiRouter.post('/import/members', (req, res) => {
   const db = getDb();
   const { members } = req.body;
@@ -1902,8 +1930,30 @@ apiRouter.post('/import/members', (req, res) => {
   }
 
   let successCount = 0;
+  let familiesCreatedCount = 0;
   const errors: string[] = [];
   const now = new Date().toISOString().substring(0, 10);
+
+  // Fetch all rayons and categorials for name/code resolution
+  const allRayons = db.prepare('SELECT id, code, name FROM rayons').all() as any[];
+  const allCategorials = db.prepare('SELECT id, code, name FROM categorial_groups').all() as any[];
+
+  // Cache existing families
+  const existingFamilies = db.prepare('SELECT id, family_no, head_of_family_name, head_of_family_id FROM families').all() as any[];
+  const familyMap = new Map<string, { id: string; familyNo: string; headName: string; headId?: string }>();
+  for (const f of existingFamilies) {
+    if (f.family_no) familyMap.set(f.family_no.trim().toLowerCase(), { id: f.id, familyNo: f.family_no, headName: f.head_of_family_name, headId: f.head_of_family_id });
+    if (f.head_of_family_name) familyMap.set(`name_${f.head_of_family_name.trim().toLowerCase()}`, { id: f.id, familyNo: f.family_no, headName: f.head_of_family_name, headId: f.head_of_family_id });
+  }
+
+  const insertFamily = db.prepare(`
+    INSERT INTO families (id, family_no, head_of_family_name, head_of_family_id, address, rayon_id, phone, notes, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  const updateFamilyHead = db.prepare(`
+    UPDATE families SET head_of_family_id = ?, head_of_family_name = ? WHERE id = ?
+  `);
 
   const insertMember = db.prepare(`
     INSERT INTO members (
@@ -1923,43 +1973,144 @@ apiRouter.post('/import/members', (req, res) => {
     )
   `);
 
+  // Track family counts for generating family numbers
+  let familyCount = (db.prepare('SELECT count(*) as count FROM families').get() as { count: number }).count;
+  let memberCount = (db.prepare('SELECT count(*) as count FROM members').get() as { count: number }).count;
+
   for (let i = 0; i < members.length; i++) {
     const item = members[i];
     try {
+      // 1. Resolve Rayon
+      let resolvedRayonId = String(item.rayonId || '').trim();
+      if (resolvedRayonId) {
+        const lowerRayon = resolvedRayonId.toLowerCase();
+        const foundRayon = allRayons.find(r => 
+          r.id.toLowerCase() === lowerRayon ||
+          r.code.toLowerCase() === lowerRayon ||
+          r.name.toLowerCase() === lowerRayon ||
+          r.name.toLowerCase().includes(lowerRayon) ||
+          (lowerRayon.includes('1') || (lowerRayon.includes('i') && !lowerRayon.includes('ii') && !lowerRayon.includes('iv')) ? r.name.includes('I') : false) ||
+          (lowerRayon.includes('2') || (lowerRayon.includes('ii') && !lowerRayon.includes('iii')) ? r.name.includes('II') : false) ||
+          (lowerRayon.includes('3') || lowerRayon.includes('iii') ? r.name.includes('III') : false) ||
+          (lowerRayon.includes('4') || lowerRayon.includes('iv') ? r.name.includes('IV') : false)
+        );
+        if (foundRayon) resolvedRayonId = foundRayon.id;
+      }
+      if (!resolvedRayonId && allRayons.length > 0) resolvedRayonId = allRayons[0].id;
+      item.rayonId = resolvedRayonId;
+
+      // 2. Resolve Categorial Group
+      let resolvedCatId = String(item.categorialGroupId || '').trim();
+      if (resolvedCatId) {
+        const lowerCat = resolvedCatId.toLowerCase();
+        const foundCat = allCategorials.find(c => 
+          c.id.toLowerCase() === lowerCat ||
+          c.code.toLowerCase() === lowerCat ||
+          c.name.toLowerCase().includes(lowerCat)
+        );
+        if (foundCat) resolvedCatId = foundCat.id;
+      }
+      if (!resolvedCatId && item.birthDate) {
+        const birth = new Date(item.birthDate);
+        const age = !isNaN(birth.getTime()) ? new Date().getFullYear() - birth.getFullYear() : 25;
+        if (age <= 15) resolvedCatId = allCategorials.find(c => c.code === 'PAR')?.id || 'c1';
+        else if (age <= 30) resolvedCatId = allCategorials.find(c => c.code === 'PEMUDA')?.id || 'c2';
+        else if (age >= 60) resolvedCatId = allCategorials.find(c => c.code === 'LANSIA')?.id || 'c5';
+        else resolvedCatId = item.gender === 'Perempuan' ? (allCategorials.find(c => c.code === 'PKP')?.id || 'c3') : (allCategorials.find(c => c.code === 'PKB')?.id || 'c4');
+      }
+      if (!resolvedCatId && allCategorials.length > 0) resolvedCatId = allCategorials[0].id;
+      item.categorialGroupId = resolvedCatId;
+
+      // Validate Member
       const v = validateMemberInput(item);
       if (!v.valid) {
         errors.push(`Baris ${i + 1} (${item.fullName || 'Tanpa Nama'}): ${v.errors.join(', ')}`);
         continue;
       }
 
+      // 3. Automatic Family Card (KK) Creation / Linking
+      let linkedFamilyId = item.familyId || '';
+      const rawCardNo = String(item.familyCardNo || '').trim();
+      const rawHeadName = String(item.headOfFamilyName || '').trim();
+
+      if (rawCardNo || rawHeadName || item.familyRole === 'Kepala Keluarga') {
+        const keyByNo = rawCardNo ? rawCardNo.toLowerCase() : '';
+        const keyByName = rawHeadName ? `name_${rawHeadName.toLowerCase()}` : '';
+
+        let targetFamily = (keyByNo && familyMap.get(keyByNo)) || (keyByName && familyMap.get(keyByName));
+
+        if (!targetFamily) {
+          // Create new Family (KK) automatically!
+          familyCount++;
+          const newFamId = 'fam-imp-' + Date.now() + '-' + i;
+          const newFamNo = rawCardNo || generateFamilyNo(familyCount);
+          const headName = (item.familyRole === 'Kepala Keluarga' ? item.fullName : rawHeadName) || `Keluarga ${item.fullName}`;
+
+          insertFamily.run(
+            newFamId,
+            newFamNo,
+            headName,
+            null,
+            item.address || 'Desa Lembur Tengah',
+            item.rayonId,
+            item.phone || '',
+            item.notes ? `KK Dibuat otomatis saat impor jemaat (${item.notes})` : 'Dibuat otomatis via Impor Excel',
+            now
+          );
+
+          targetFamily = { id: newFamId, familyNo: newFamNo, headName };
+          if (rawCardNo) familyMap.set(keyByNo, targetFamily);
+          if (rawHeadName) familyMap.set(keyByName, targetFamily);
+          familyMap.set(`name_${headName.toLowerCase()}`, targetFamily);
+          familiesCreatedCount++;
+        }
+
+        linkedFamilyId = targetFamily.id;
+        item.familyCardNo = targetFamily.familyNo;
+      }
+
       const id = 'm-imp-' + Date.now() + '-' + i;
-      const count = (db.prepare('SELECT count(*) as count FROM members').get() as { count: number }).count;
-      const memberNo = item.memberNo || generateMemberNo(count + 1);
+      memberCount++;
+      const memberNo = item.memberNo || generateMemberNo(memberCount);
 
       insertMember.run(
         id, memberNo, item.fullName, item.nickname || '', item.nik || '', item.familyCardNo || '',
-        item.familyId || '', item.familyRole || 'Anggota', item.gender, item.birthPlace || '',
+        linkedFamilyId, item.familyRole || 'Anggota', item.gender, item.birthPlace || '',
         item.birthDate, item.address || '', item.kelurahan || '',
         item.kecamatan || '', item.kabupaten || '', item.phone || '', item.email || '',
         item.maritalStatus || 'Belum Menikah', item.spouseName || '', item.rayonId,
-        item.categorialGroupId || '', item.membershipStatus || 'Tetap',
+        item.categorialGroupId, item.membershipStatus || 'Tetap',
         item.baptismStatus || 'Belum', item.baptismDate || '', item.confirmationStatus || 'Belum',
         item.confirmationDate || '', item.marriageChurchStatus || 'Belum', item.marriageDate || '',
         item.education || '', item.occupation || '', item.joinDate || now, item.status || 'Aktif',
         item.notes || 'Diimpor via Excel/CSV', now, now
       );
 
+      // If this member is Kepala Keluarga, link head_of_family_id in families
+      if (linkedFamilyId && item.familyRole === 'Kepala Keluarga') {
+        try {
+          updateFamilyHead.run(id, item.fullName, linkedFamilyId);
+        } catch {}
+      }
+
       successCount++;
     } catch (err: any) {
-      errors.push(`Baris ${i + 1} gagal: ${err.message}`);
+      errors.push(`Baris ${i + 1} (${item.fullName || 'Data'}): ${err.message}`);
     }
   }
 
-  addAuditLog('admin', 'Admin', 'Impor Data Jemaat', 'Impor & Ekspor', `Berhasil mengimpor ${successCount} data jemaat. Gagal: ${errors.length}`);
+  addAuditLog(
+    'admin',
+    'Admin',
+    'Impor Data Jemaat & KK',
+    'Impor & Ekspor',
+    `Berhasil mengimpor ${successCount} data jemaat dan membuat/menghubungkan ${familiesCreatedCount} Kartu Keluarga otomatis. Gagal: ${errors.length}`
+  );
 
   res.json({
     success: true,
     imported: successCount,
+    familiesCreated: familiesCreatedCount,
     failed: errors.length,
     errors,
   });
@@ -2051,3 +2202,126 @@ apiRouter.delete('/events/:id', (req, res) => {
     res.status(500).json({ success: false, message: err.message });
   }
 });
+
+// =========================================================================
+// Online Service Registrations (Baptisan & Pernikahan Online / Google Forms)
+// =========================================================================
+
+apiRouter.get('/service-registrations', (req, res) => {
+  const db = getDb();
+  const { type, status } = req.query;
+  try {
+    let sql = 'SELECT * FROM service_registrations WHERE 1=1';
+    const params: any[] = [];
+    if (type) {
+      sql += ' AND service_type = ?';
+      params.push(String(type));
+    }
+    if (status) {
+      sql += ' AND status = ?';
+      params.push(String(status));
+    }
+    sql += ' ORDER BY created_at DESC';
+    const rows = db.prepare(sql).all(...params) as any[];
+
+    const registrations = rows.map((r) => {
+      let parsedDetails = {};
+      try {
+        parsedDetails = JSON.parse(r.details_json || '{}');
+      } catch {}
+      return {
+        id: r.id,
+        serviceType: r.service_type,
+        applicantName: r.applicant_name,
+        applicantPhone: r.applicant_phone || '',
+        details: parsedDetails,
+        status: r.status,
+        adminNotes: r.admin_notes || '',
+        googleFormResponseId: r.google_form_response_id || '',
+        createdAt: r.created_at,
+      };
+    });
+
+    res.json({ success: true, registrations });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+apiRouter.post('/service-registrations', (req, res) => {
+  const db = getDb();
+  const data = req.body || {};
+  const id = 'reg-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6);
+  const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
+
+  if (!data.serviceType || !data.applicantName) {
+    return res.status(400).json({
+      success: false,
+      message: 'Jenis pelayanan dan nama pemohon wajib diisi.',
+    });
+  }
+
+  try {
+    const detailsJson = typeof data.details === 'string' ? data.details : JSON.stringify(data.details || {});
+    db.prepare(`
+      INSERT INTO service_registrations
+      (id, service_type, applicant_name, applicant_phone, details_json, status, admin_notes, google_form_response_id, created_at)
+      VALUES (?, ?, ?, ?, ?, 'Menunggu Verifikasi', ?, ?, ?)
+    `).run(
+      id,
+      String(data.serviceType).toLowerCase(),
+      String(data.applicantName).trim(),
+      data.applicantPhone ? String(data.applicantPhone).trim() : '',
+      detailsJson,
+      data.adminNotes || '',
+      data.googleFormResponseId || '',
+      now
+    );
+
+    addAuditLog('public', 'Jemaat Online', 'Pendaftaran Pelayanan', 'Pelayanan Online', `Pendaftaran online ${data.serviceType}: ${data.applicantName}`);
+    res.json({
+      success: true,
+      message: `Pendaftaran ${data.serviceType === 'baptis' ? 'Baptisan Kudus' : 'Pemberkatan Nikah'} berhasil diajukan dan sedang diverifikasi oleh Sekretariat Majelis.`,
+      registrationId: id,
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+apiRouter.put('/service-registrations/:id/status', (req, res) => {
+  const db = getDb();
+  const { id } = req.params;
+  const { status, adminNotes } = req.body || {};
+
+  try {
+    const current = db.prepare('SELECT * FROM service_registrations WHERE id = ?').get(id) as any;
+    if (!current) {
+      return res.status(404).json({ success: false, message: 'Data pendaftaran tidak ditemukan.' });
+    }
+
+    db.prepare(`
+      UPDATE service_registrations
+      SET status = ?, admin_notes = ?
+      WHERE id = ?
+    `).run(status || current.status, adminNotes !== undefined ? adminNotes : current.admin_notes, id);
+
+    addAuditLog('admin', 'Admin', 'Verifikasi Pendaftaran', 'Pelayanan Online', `Mengubah status pendaftaran ${id} menjadi ${status}`);
+    res.json({ success: true, message: `Status pendaftaran berhasil diubah menjadi "${status}".` });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+apiRouter.delete('/service-registrations/:id', (req, res) => {
+  const db = getDb();
+  const { id } = req.params;
+  try {
+    db.prepare('DELETE FROM service_registrations WHERE id = ?').run(id);
+    addAuditLog('admin', 'Admin', 'Hapus Pendaftaran', 'Pelayanan Online', `Menghapus pendaftaran ID: ${id}`);
+    res.json({ success: true, message: 'Data pendaftaran online berhasil dihapus.' });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+

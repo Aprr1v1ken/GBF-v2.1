@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { calculateAge, formatDateDMY } from '../../utils/church-logic.ts';
 import type { Member, Rayon, CategorialGroup } from '../../types/index.ts';
+import { downloadExcelTemplate } from '../../utils/excel-import-export.ts';
 
 interface MembersViewProps {
   members: Member[];
@@ -178,12 +179,21 @@ export const MembersView: React.FC<MembersViewProps> = ({
           </button>
 
           <button
+            onClick={() => downloadExcelTemplate(rayons, categorials)}
+            className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-emerald-600/90 hover:bg-emerald-500 text-white transition-colors border border-emerald-500/40 cursor-pointer shadow-xs"
+            title="Unduh Format / Template Excel (.xlsx) untuk diisi"
+          >
+            <Download className="w-3.5 h-3.5 text-emerald-200" />
+            <span>Unduh Format Excel</span>
+          </button>
+
+          <button
             onClick={onOpenImportModal}
-            className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg bg-slate-800 border border-slate-700 text-slate-200 hover:bg-slate-700 transition-colors cursor-pointer"
-            title="Impor dari Excel / CSV"
+            className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-amber-500/10 border border-amber-500/40 text-amber-300 hover:bg-amber-500/20 transition-colors cursor-pointer"
+            title="Impor dari Excel (.xlsx) / CSV"
           >
             <Upload className="w-3.5 h-3.5 text-amber-400" />
-            <span>Impor Data</span>
+            <span>Impor Excel / CSV</span>
           </button>
 
           <button
@@ -191,7 +201,7 @@ export const MembersView: React.FC<MembersViewProps> = ({
             className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg bg-slate-800 border border-slate-700 text-slate-200 hover:bg-slate-700 transition-colors cursor-pointer"
             title="Unduh format CSV standar"
           >
-            <Download className="w-3.5 h-3.5 text-emerald-400" />
+            <Download className="w-3.5 h-3.5 text-slate-400" />
             <span>Ekspor CSV</span>
           </button>
 

@@ -35,6 +35,7 @@ import { BackupView } from './components/views/BackupView.tsx';
 import { AuditLogsView } from './components/views/AuditLogsView.tsx';
 import { ReportsView } from './components/views/ReportsView.tsx';
 import { SettingsView } from './components/views/SettingsView.tsx';
+import { N8nIntegrationView } from './components/views/N8nIntegrationView.tsx';
 
 import * as api from './services/api.ts';
 import { syncPendingActivityImages } from './services/cloud-sync.ts';
@@ -1052,6 +1053,7 @@ export default function App() {
               families={families}
               members={members}
               rayons={rayons}
+              categorials={categorials}
               onOpenAddModal={() => {
                 setEditingFamily(null);
                 setShowFamilyModal(true);
@@ -1061,6 +1063,7 @@ export default function App() {
                 setShowFamilyModal(true);
               }}
               onDeleteFamily={handleDeleteFamily}
+              onOpenImportModal={() => setShowImportModal(true)}
               onOpenPrintReport={() => {
                 setReportType('rayons');
                 setShowPrintReportModal(true);
@@ -1170,6 +1173,8 @@ export default function App() {
                 setReportType('sacraments');
                 setShowPrintReportModal(true);
               }}
+              rayons={rayons}
+              onRefreshSacraments={loadAllData}
             />
           )}
 
@@ -1244,6 +1249,8 @@ export default function App() {
               onAddAnnouncement={handleAddAnnouncement}
               onUpdateAnnouncement={handleUpdateAnnouncement}
               onDeleteAnnouncement={handleDeleteAnnouncement}
+              churchSettings={churchSettings}
+              rayons={rayons}
             />
           )}
 
@@ -1312,6 +1319,10 @@ export default function App() {
               logs={auditLogs}
             />
           )}
+
+          {currentView === 'n8n' && (
+            <N8nIntegrationView />
+          )}
           </React.Suspense>
         </main>
       </div>
@@ -1375,6 +1386,8 @@ export default function App() {
         onImport={handleImportMembers}
         rayons={rayons}
         categorials={categorials}
+        families={families}
+        members={members}
       />
 
       <PrintReportModal

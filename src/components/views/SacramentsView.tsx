@@ -1,19 +1,22 @@
 import React, { useState } from 'react';
-import { BookOpen, Award, Heart, Plus, Search, Printer, CheckCircle2, Trash2, Edit2 } from 'lucide-react';
+import { BookOpen, Award, Heart, Plus, Search, Printer, CheckCircle2, Trash2, Edit2, ClipboardList } from 'lucide-react';
 import { formatDateDMY } from '../../utils/church-logic.ts';
-import type { BaptismRecord, ConfirmationRecord, MarriageRecord, Member } from '../../types/index.ts';
+import type { BaptismRecord, ConfirmationRecord, MarriageRecord, Member, Rayon } from '../../types/index.ts';
+import { OnlineServiceFormsModal } from '../OnlineServiceFormsModal.tsx';
 
 interface SacramentsViewProps {
   baptisms: BaptismRecord[];
   confirmations: ConfirmationRecord[];
   marriages: MarriageRecord[];
   members: Member[];
+  rayons?: Rayon[];
   onOpenAddBaptism: () => void;
   onOpenAddConfirmation: () => void;
   onOpenAddMarriage: () => void;
   onDeleteSacrament?: (type: 'baptis' | 'sidi' | 'nikah', id: string) => Promise<void>;
   onEditSacrament?: (type: 'baptis' | 'sidi' | 'nikah', record: any) => void;
   onPrintCertificate: (type: string, record: any) => void;
+  onRefreshSacraments?: () => void;
 }
 
 export const SacramentsView: React.FC<SacramentsViewProps> = ({
@@ -21,14 +24,17 @@ export const SacramentsView: React.FC<SacramentsViewProps> = ({
   confirmations,
   marriages,
   members,
+  rayons = [],
   onOpenAddBaptism,
   onOpenAddConfirmation,
   onOpenAddMarriage,
   onDeleteSacrament,
   onEditSacrament,
   onPrintCertificate,
+  onRefreshSacraments,
 }) => {
   const [activeTab, setActiveTab] = useState<'baptis' | 'sidi' | 'nikah'>('baptis');
+  const [showOnlineFormsModal, setShowOnlineFormsModal] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const query = searchTerm.trim().toLowerCase();
   const matches = (record: any) => !query || Object.values(record).join(' ').toLowerCase().includes(query);
@@ -51,6 +57,15 @@ export const SacramentsView: React.FC<SacramentsViewProps> = ({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => setShowOnlineFormsModal(true)}
+            className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-lg bg-gradient-to-r from-cyan-600 to-emerald-600 hover:from-cyan-500 hover:to-emerald-500 text-white transition-all shadow-sm cursor-pointer"
+            title="Buka form pendaftaran baptisan & pernikahan online via Google Forms API"
+          >
+            <ClipboardList className="w-4 h-4" />
+            <span>Form Pelayanan Online</span>
+          </button>
+
           {activeTab === 'baptis' && (
             <button
               onClick={onOpenAddBaptism}
@@ -315,6 +330,15 @@ export const SacramentsView: React.FC<SacramentsViewProps> = ({
           </div>
         </div>
       )}
+
+      {/* Online Service Registration Modal */}
+      <OnlineServiceFormsModal
+        isOpen={showOnlineFormsModal}
+        onClose={() => setShowOnlineFormsModal(false)}
+        initialTab={activeTab === 'nikah' ? 'nikah' : 'baptis'}
+        rayons={rayons}
+        onRefreshSacraments={onRefreshSacraments}
+      />
     </div>
   );
 };
