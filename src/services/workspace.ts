@@ -5,7 +5,7 @@ import {
   type User,
 } from '@firebase/auth';
 import { auth } from './firebase.ts';
-import type { Member, FinancialTransaction } from '../types/index.ts';
+import type { Member, FinancialTransaction, Family } from '../types/index.ts';
 
 // Configured Workspace Scopes
 export const WORKSPACE_SCOPES = [
@@ -415,6 +415,44 @@ export async function exportFinanceToGoogleSheets(token: string, transactions: F
 
   const title = `Buku Kas Keuangan GMIT Betel Fuimelang — ${new Date().toISOString().substring(0, 10)}`;
   return createSpreadsheetWithData(token, title, headers, rows);
+}
+
+export interface GoogleSpreadsheetFile {
+  id: string;
+  name: string;
+  webViewLink?: string;
+  createdTime?: string;
+  modifiedTime?: string;
+}
+
+export async function exportFamiliesToGoogleSheets(token: string, families: Family[]) {
+  const headers = [
+    'Nomor KK',
+    'Nama Kepala Keluarga',
+    'Rayon Pelayanan',
+    'Jumlah Anggota Keluarga (Jiwa)',
+    'Alamat Lengkap',
+    'No Telepon / WA',
+    'Catatan Khusus',
+  ];
+
+  const rows = families.map((f) => [
+    f.familyNo || (f as any).familyCardNo || '-',
+    f.headOfFamilyName,
+    f.rayonName || f.rayonId,
+    f.memberCount || 0,
+    f.address,
+    f.phone || '-',
+    f.notes || '-',
+  ]);
+
+  const title = `Daftar Kartu Keluarga (KK) GMIT Betel Fuimelang — ${new Date().toISOString().substring(0, 10)}`;
+  return createSpreadsheetWithData(token, title, headers, rows);
+}
+
+export async function listGoogleSpreadsheets(token: string): Promise<GoogleSpreadsheetFile[]> {
+  const res = await listUserDriveFiles(token, 'application/vnd.google-apps.spreadsheet');
+  return res.files || [];
 }
 
 /* =========================================================================

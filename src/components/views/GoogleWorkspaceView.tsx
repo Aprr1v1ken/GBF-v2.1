@@ -15,7 +15,7 @@ import {
   LogOut,
   FolderOpen,
 } from 'lucide-react';
-import type { Member, FinancialTransaction, Rayon } from '../../types/index.ts';
+import type { Member, FinancialTransaction, Rayon, Family } from '../../types/index.ts';
 import {
   initWorkspaceAuth,
   signInWithWorkspace,
@@ -23,6 +23,10 @@ import {
   disconnectWorkspace,
   exportMembersToGoogleSheets,
   exportFinanceToGoogleSheets,
+  exportFamiliesToGoogleSheets,
+  createSpreadsheetWithData,
+  listGoogleSpreadsheets,
+  type GoogleSpreadsheetFile,
   createGoogleDoc,
   listGoogleDocs,
   type GoogleDocFile,
@@ -41,12 +45,14 @@ interface GoogleWorkspaceViewProps {
   members: Member[];
   transactions: FinancialTransaction[];
   rayons: Rayon[];
+  families?: Family[];
 }
 
 export const GoogleWorkspaceView: React.FC<GoogleWorkspaceViewProps> = ({
   members,
   transactions,
   rayons,
+  families = [],
 }) => {
   const [token, setToken] = useState<string | null>(getWorkspaceAccessToken());
   const [userEmail, setUserEmail] = useState<string | null>(null);
@@ -57,6 +63,8 @@ export const GoogleWorkspaceView: React.FC<GoogleWorkspaceViewProps> = ({
 
   // Sheets state
   const [lastSheetUrl, setLastSheetUrl] = useState<string | null>(null);
+  const [existingSheets, setExistingSheets] = useState<GoogleSpreadsheetFile[]>([]);
+  const [loadingSheets, setLoadingSheets] = useState(false);
 
   // Docs state
   const [docTemplate, setDocTemplate] = useState<'warta' | 'surat' | 'notulen' | 'khotbah'>('warta');
@@ -91,6 +99,7 @@ export const GoogleWorkspaceView: React.FC<GoogleWorkspaceViewProps> = ({
       (user, tok) => {
         setToken(tok);
         setUserEmail(user.email);
+        loadSheetsList(tok);
       },
       () => {
         setToken(null);
@@ -99,6 +108,26 @@ export const GoogleWorkspaceView: React.FC<GoogleWorkspaceViewProps> = ({
     );
     return () => unsubscribe();
   }, []);
+
+  const loadSheetsList = async (authToken?: string) => {
+    const t = authToken || token;
+    if (!t) return;
+    setLoadingSheets(true);
+    try {
+      const sheets = await listGoogleSpreadsheets(t);
+      setExistingSheets(sheets);
+    } catch (err: any) {
+      console.warn('Gagal memuat daftar Google Sheets:', err);
+    } finally {
+      setLoadingSheets(false);
+    }
+  };
+
+  useEffect(() => {
+    if (token && activeTab === 'sheets') {
+      loadSheetsList();
+    }
+  }, [token, activeTab]);
 
   const handleSignIn = async () => {
     setLoading(true);
@@ -110,6 +139,7 @@ export const GoogleWorkspaceView: React.FC<GoogleWorkspaceViewProps> = ({
         setUserEmail(res.user.email);
         setSuccessMsg(`Berhasil terhubung ke akun Google: ${res.user.email}`);
         setTimeout(() => setSuccessMsg(null), 3500);
+        loadSheetsList(res.accessToken);
       }
     } catch (err: any) {
       setErrorMsg(err.message || 'Gagal masuk dengan akun Google.');
@@ -124,6 +154,7 @@ export const GoogleWorkspaceView: React.FC<GoogleWorkspaceViewProps> = ({
     setUserEmail(null);
     setTasks([]);
     setDriveFiles([]);
+    setExistingSheets([]);
   };
 
   // 1. Export Sheets
@@ -136,6 +167,7 @@ export const GoogleWorkspaceView: React.FC<GoogleWorkspaceViewProps> = ({
       setLastSheetUrl(res.url);
       setSuccessMsg(`Berhasil mengekspor ${members.length} data jemaat ke Google Sheets!`);
       setTimeout(() => setSuccessMsg(null), 4000);
+      loadSheetsList();
     } catch (err: any) {
       setErrorMsg(err.message || 'Gagal mengekspor data ke Google Sheets.');
     } finally {
@@ -152,8 +184,49 @@ export const GoogleWorkspaceView: React.FC<GoogleWorkspaceViewProps> = ({
       setLastSheetUrl(res.url);
       setSuccessMsg(`Berhasil mengekspor ${transactions.length} transaksi kas ke Google Sheets!`);
       setTimeout(() => setSuccessMsg(null), 4000);
+      loadSheetsList();
     } catch (err: any) {
       setErrorMsg(err.message || 'Gagal mengekspor kas ke Google Sheets.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleExportFamiliesSheet = async () => {
+    if (!token) return;
+    setLoading(true);
+    setErrorMsg(null);
+    try {
+      const res = await exportFamiliesToGoogleSheets(token, families);
+      setLastSheetUrl(res.url);
+      setSuccessMsg(`Berhasil mengekspor ${families.length} data Kartu Keluarga ke Google Sheets!`);
+      setTimeout(() => setSuccessMsg(null), 4000);
+      loadSheetsList();
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Gagal mengekspor data Kartu Keluarga ke Google Sheets.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCreateBlankSheet = async () => {
+    if (!token) return;
+    setLoading(true);
+    setErrorMsg(null);
+    try {
+      const title = `Lembar Kerja Pelayanan — GMIT Betel Fuimelang (${new Date().toLocaleDateString('id-ID')})`;
+      const headers = ['No', 'Tanggal', 'Uraian Pelayanan / Kegiatan', 'Rayon / Kategorial', 'Penanggung Jawab', 'Keterangan'];
+      const rows = [
+        ['1', new Date().toISOString().substring(0, 10), 'Rapat Persiapan Majelis Jemaat', 'Semua Rayon', 'Ketua Majelis', 'Konsistori'],
+        ['2', new Date().toISOString().substring(0, 10), 'Kunjungan Pastoral Warga Lansia & Sakit', 'Rayon I & II', 'Presbiter Rayon', 'Terlaksana'],
+      ];
+      const res = await createSpreadsheetWithData(token, title, headers, rows);
+      setLastSheetUrl(res.url);
+      setSuccessMsg(`Google Sheets baru "${title}" berhasil dibuat!`);
+      setTimeout(() => setSuccessMsg(null), 4000);
+      loadSheetsList();
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Gagal membuat Google Sheets baru.');
     } finally {
       setLoading(false);
     }
@@ -637,73 +710,149 @@ export const GoogleWorkspaceView: React.FC<GoogleWorkspaceViewProps> = ({
 
       {/* 1. SHEETS TAB */}
       {token && activeTab === 'sheets' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="p-6 rounded-2xl bg-[#0c1329] border border-emerald-500/30 space-y-4">
+        <div className="space-y-6">
+          {/* Quick Actions Header */}
+          <div className="flex flex-wrap items-center justify-between gap-3 p-4 rounded-2xl bg-[#0c1329] border border-emerald-500/30">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
-                <FileSpreadsheet className="w-6 h-6" />
+              <div className="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
+                <FileSpreadsheet className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="text-sm font-bold text-white">Ekspor Database Jemaat ke Google Sheets</h3>
-                <p className="text-xs text-slate-400">Sinkronkan seluruh data warga jemaat, kategorial & rayon</p>
+                <h3 className="text-sm font-bold text-white">Google Sheets Ekspor & Sinkronisasi</h3>
+                <p className="text-xs text-slate-400">Sinkronkan data pelayanan GMIT Betel Fuimelang ke Google Spreadsheet secara realtime</p>
               </div>
             </div>
-
-            <div className="p-3.5 rounded-xl bg-slate-900/80 border border-slate-800 text-xs text-slate-300 space-y-1.5">
-              <div className="flex justify-between">
-                <span>Total Jiwa Terdaftar:</span>
-                <span className="font-bold text-emerald-400">{members.length} Jiwa</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Kolom yang diekspor:</span>
-                <span className="text-slate-400">No Anggota, Nama, TTL, Rayon, Sakramen, dsb</span>
-              </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleCreateBlankSheet}
+                disabled={loading}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 text-xs font-bold transition cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Spreadsheet Baru</span>
+              </button>
+              <button
+                onClick={() => loadSheetsList()}
+                disabled={loadingSheets}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition cursor-pointer"
+                title="Muat ulang daftar spreadsheet dari Google Drive"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${loadingSheets ? 'animate-spin text-emerald-400' : ''}`} />
+                <span>Refresh</span>
+              </button>
             </div>
-
-            <button
-              onClick={handleExportMembersSheet}
-              disabled={loading}
-              className="w-full py-2.5 px-4 rounded-xl font-bold text-xs bg-emerald-600 hover:bg-emerald-500 text-white transition flex items-center justify-center gap-2 cursor-pointer shadow-md"
-            >
-              {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <FileSpreadsheet className="w-4 h-4" />}
-              <span>Ekspor Data Jemaat ke Google Sheets</span>
-            </button>
           </div>
 
-          <div className="p-6 rounded-2xl bg-[#0c1329] border border-emerald-500/30 space-y-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
-                <FileSpreadsheet className="w-6 h-6" />
+          {/* 3 Export Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+            {/* 1. Database Jemaat */}
+            <div className="p-5 rounded-2xl bg-[#0c1329] border border-emerald-500/30 flex flex-col justify-between space-y-4">
+              <div className="space-y-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
+                    <FileSpreadsheet className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold text-white">Database Jemaat</h4>
+                    <p className="text-[11px] text-slate-400">Warga jemaat & kategorial</p>
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-xl bg-slate-900/80 border border-slate-800 text-[11px] text-slate-300 space-y-1">
+                  <div className="flex justify-between">
+                    <span>Total Jiwa:</span>
+                    <span className="font-bold text-emerald-400">{members.length} Jiwa</span>
+                  </div>
+                  <div className="flex justify-between text-slate-400 text-[10px]">
+                    <span>Format:</span>
+                    <span>No Anggota, TTL, Rayon, Sakramen</span>
+                  </div>
+                </div>
               </div>
-              <div>
-                <h3 className="text-sm font-bold text-white">Ekspor Kas Keuangan ke Google Sheets</h3>
-                <p className="text-xs text-slate-400">Sinkronkan pembukuan penerimaan & pengeluaran kas gereja</p>
-              </div>
+
+              <button
+                onClick={handleExportMembersSheet}
+                disabled={loading}
+                className="w-full py-2 px-3 rounded-xl font-bold text-xs bg-emerald-600 hover:bg-emerald-500 text-white transition flex items-center justify-center gap-2 cursor-pointer shadow-md"
+              >
+                {loading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <FileSpreadsheet className="w-3.5 h-3.5" />}
+                <span>Ekspor ke Sheets</span>
+              </button>
             </div>
 
-            <div className="p-3.5 rounded-xl bg-slate-900/80 border border-slate-800 text-xs text-slate-300 space-y-1.5">
-              <div className="flex justify-between">
-                <span>Total Transaksi Kas:</span>
-                <span className="font-bold text-emerald-400">{transactions.length} Transaksi</span>
+            {/* 2. Kartu Keluarga (KK) */}
+            <div className="p-5 rounded-2xl bg-[#0c1329] border border-emerald-500/30 flex flex-col justify-between space-y-4">
+              <div className="space-y-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
+                    <FileSpreadsheet className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold text-white">Kartu Keluarga (KK)</h4>
+                    <p className="text-[11px] text-slate-400">Kepala keluarga & domisili</p>
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-xl bg-slate-900/80 border border-slate-800 text-[11px] text-slate-300 space-y-1">
+                  <div className="flex justify-between">
+                    <span>Total KK Terdaftar:</span>
+                    <span className="font-bold text-emerald-400">{families.length} Keluarga</span>
+                  </div>
+                  <div className="flex justify-between text-slate-400 text-[10px]">
+                    <span>Format:</span>
+                    <span>No KK, Nama Kepala, Alamat, Rayon</span>
+                  </div>
+                </div>
               </div>
-              <div className="flex justify-between">
-                <span>Kolom yang diekspor:</span>
-                <span className="text-slate-400">Tanggal, Jenis, Kategori, Nominal, Catatan</span>
-              </div>
+
+              <button
+                onClick={handleExportFamiliesSheet}
+                disabled={loading}
+                className="w-full py-2 px-3 rounded-xl font-bold text-xs bg-emerald-600 hover:bg-emerald-500 text-white transition flex items-center justify-center gap-2 cursor-pointer shadow-md"
+              >
+                {loading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <FileSpreadsheet className="w-3.5 h-3.5" />}
+                <span>Ekspor KK ke Sheets</span>
+              </button>
             </div>
 
-            <button
-              onClick={handleExportFinanceSheet}
-              disabled={loading}
-              className="w-full py-2.5 px-4 rounded-xl font-bold text-xs bg-emerald-600 hover:bg-emerald-500 text-white transition flex items-center justify-center gap-2 cursor-pointer shadow-md"
-            >
-              {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <FileSpreadsheet className="w-4 h-4" />}
-              <span>Ekspor Buku Kas ke Google Sheets</span>
-            </button>
+            {/* 3. Kas Keuangan */}
+            <div className="p-5 rounded-2xl bg-[#0c1329] border border-emerald-500/30 flex flex-col justify-between space-y-4">
+              <div className="space-y-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
+                    <FileSpreadsheet className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold text-white">Buku Kas Keuangan</h4>
+                    <p className="text-[11px] text-slate-400">Pemasukan & pengeluaran kas</p>
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-xl bg-slate-900/80 border border-slate-800 text-[11px] text-slate-300 space-y-1">
+                  <div className="flex justify-between">
+                    <span>Total Transaksi:</span>
+                    <span className="font-bold text-emerald-400">{transactions.length} Transaksi</span>
+                  </div>
+                  <div className="flex justify-between text-slate-400 text-[10px]">
+                    <span>Format:</span>
+                    <span>Tanggal, Jenis, Kategori, Nominal</span>
+                  </div>
+                </div>
+              </div>
+
+              <button
+                onClick={handleExportFinanceSheet}
+                disabled={loading}
+                className="w-full py-2 px-3 rounded-xl font-bold text-xs bg-emerald-600 hover:bg-emerald-500 text-white transition flex items-center justify-center gap-2 cursor-pointer shadow-md"
+              >
+                {loading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <FileSpreadsheet className="w-3.5 h-3.5" />}
+                <span>Ekspor Kas ke Sheets</span>
+              </button>
+            </div>
           </div>
 
           {lastSheetUrl && (
-            <div className="md:col-span-2 p-4 rounded-xl bg-emerald-950/40 border border-emerald-500/40 flex items-center justify-between">
+            <div className="p-4 rounded-xl bg-emerald-950/40 border border-emerald-500/40 flex items-center justify-between">
               <div className="flex items-center gap-2 text-xs text-emerald-200">
                 <Check className="w-4 h-4 text-emerald-400" />
                 <span>Spreadsheet Google berhasil dibuat dan disinkronkan!</span>
@@ -719,6 +868,78 @@ export const GoogleWorkspaceView: React.FC<GoogleWorkspaceViewProps> = ({
               </a>
             </div>
           )}
+
+          {/* Existing Spreadsheets in Google Drive */}
+          <div className="p-6 rounded-2xl bg-[#0c1329] border border-slate-800 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2.5">
+                <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
+                <h4 className="text-xs font-bold text-white uppercase tracking-wider">
+                  Berkas Google Sheets di Google Drive Anda
+                </h4>
+              </div>
+              <span className="text-[11px] text-slate-400">
+                {existingSheets.length} Berkas Ditemukan
+              </span>
+            </div>
+
+            {loadingSheets ? (
+              <div className="py-8 text-center text-xs text-slate-400 flex items-center justify-center gap-2">
+                <RefreshCw className="w-4 h-4 animate-spin text-emerald-400" />
+                <span>Memuat berkas spreadsheet dari Google Drive...</span>
+              </div>
+            ) : existingSheets.length === 0 ? (
+              <div className="py-8 text-center text-xs text-slate-400 space-y-1">
+                <p>Belum ada Google Sheets yang terdeteksi di akun Google Drive ini.</p>
+                <p className="text-[11px] text-slate-400">Gunakan tombol ekspor di atas untuk membuat spreadsheet pertama Anda.</p>
+              </div>
+            ) : (
+              <div className="divide-y divide-slate-800/60 max-h-80 overflow-y-auto">
+                {existingSheets.map((sheet) => (
+                  <div
+                    key={sheet.id}
+                    className="py-3 px-2 flex items-center justify-between hover:bg-slate-850/50 rounded-lg transition"
+                  >
+                    <div className="flex items-center gap-3 min-w-0 pr-4">
+                      <div className="w-7 h-7 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center shrink-0">
+                        <FileSpreadsheet className="w-3.5 h-3.5" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-xs font-semibold text-slate-200 truncate">
+                          {sheet.name}
+                        </div>
+                        <div className="text-[10px] text-slate-400">
+                          {sheet.modifiedTime ? `Diperbarui: ${new Date(sheet.modifiedTime).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}` : 'Google Spreadsheet'}
+                        </div>
+                      </div>
+                    </div>
+
+                    {sheet.webViewLink ? (
+                      <a
+                        href={sheet.webViewLink}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 text-xs font-semibold transition shrink-0"
+                      >
+                        <span>Buka</span>
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                    ) : (
+                      <a
+                        href={`https://docs.google.com/spreadsheets/d/${sheet.id}/edit`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 text-xs font-semibold transition shrink-0"
+                      >
+                        <span>Buka</span>
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
 

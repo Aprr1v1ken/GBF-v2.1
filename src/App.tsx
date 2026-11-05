@@ -1270,6 +1270,7 @@ export default function App() {
               members={members}
               transactions={transactions}
               rayons={rayons}
+              families={families}
             />
           )}
 
