@@ -37,6 +37,7 @@ interface SidebarProps {
   onOpenPublicSite: () => void;
   isOpenMobile: boolean;
   onCloseMobile: () => void;
+  birthdayCount7Days?: number;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -47,6 +48,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onOpenPublicSite,
   isOpenMobile,
   onCloseMobile,
+  birthdayCount7Days,
 }) => {
   const isCongregant = currentUser?.role === 'Jemaat';
 
@@ -54,7 +56,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
     {
       title: 'UTAMA',
       items: [
-        { id: 'dashboard', label: 'Dashboard Statistik', icon: LayoutDashboard },
+        {
+          id: 'dashboard',
+          label: 'Dashboard Statistik',
+          icon: LayoutDashboard,
+          badge: birthdayCount7Days && birthdayCount7Days > 0 ? `${birthdayCount7Days} HUT` : undefined,
+        },
         { id: 'members', label: 'Database Jemaat', icon: Users },
         { id: 'families', label: 'Kartu Keluarga (KK)', icon: Home },
         { id: 'ai-assistant', label: 'AI Rohani & Pastoral', icon: Sparkles, badge: 'Gratis' },
@@ -177,7 +184,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       </div>
                       <div className="flex items-center gap-1.5 shrink-0">
                         {(item as any).badge && (
-                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                          <span
+                            className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full border ${
+                              String((item as any).badge).includes('HUT')
+                                ? 'bg-rose-500/25 text-rose-300 border-rose-500/50 shadow-xs shadow-rose-950/50 animate-pulse'
+                                : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                            }`}
+                          >
                             {(item as any).badge}
                           </span>
                         )}

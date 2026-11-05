@@ -129,6 +129,21 @@
         "recordedBy": { "type": "string", "maxLength": 128 }
       },
       "required": ["txNo", "txDate", "type", "category", "amount", "description"]
+    },
+    "ServiceRegistration": {
+      "title": "ServiceRegistration",
+      "description": "Online service registration for Holy Baptism or Church Holy Matrimony",
+      "type": "object",
+      "properties": {
+        "service_type": { "type": "string", "enum": ["baptis", "nikah"] },
+        "applicant_name": { "type": "string", "maxLength": 128 },
+        "applicant_phone": { "type": "string", "maxLength": 32 },
+        "details_json": { "type": "string", "maxLength": 8192 },
+        "status": { "type": "string", "enum": ["Menunggu Verifikasi", "Disetujui", "Ditolak"] },
+        "admin_notes": { "type": "string", "maxLength": 512 },
+        "created_at": { "type": "string" }
+      },
+      "required": ["service_type", "applicant_name", "details_json"]
     }
   },
   "firestore": {
@@ -155,6 +170,10 @@
     "/financial_transactions/{txId}": {
       "schema": { "$ref": "#/entities/FinancialTransaction" },
       "description": "Church treasury ledger entries"
+    },
+    "/service_registrations/{registrationId}": {
+      "schema": { "$ref": "#/entities/ServiceRegistration" },
+      "description": "Online sacrament applications submitted by congregants"
     }
   }
 }

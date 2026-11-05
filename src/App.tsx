@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Header } from './components/Header.tsx';
 import { Sidebar } from './components/Sidebar.tsx';
 import { LoginModal } from './components/LoginModal.tsx';
@@ -81,6 +81,7 @@ import type {
   ChurchSettings,
 } from './types/index.ts';
 import { DEFAULT_CHURCH_SETTINGS } from './utils/church-settings.ts';
+import { getUpcomingBirthdays } from './utils/celebrations.ts';
 
 export default function App() {
   // User authentication session: if none stored in localStorage, start as null (guest/public)
@@ -144,6 +145,9 @@ export default function App() {
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [churchSettings, setChurchSettings] = useState<ChurchSettings>(DEFAULT_CHURCH_SETTINGS);
   const [stats, setStats] = useState<any>(null);
+
+  // Compute upcoming member birthdays within 7 days for global notification bell and sidebar badge
+  const upcomingBirthdays7Days = useMemo(() => getUpcomingBirthdays(members, 7), [members]);
 
   // Offline Synchronization & Network Awareness
   const [isOnline, setIsOnline] = useState<boolean>(() =>
@@ -965,6 +969,7 @@ export default function App() {
         onOpenPublicSite={() => setShowPublicSite(true)}
         isOpenMobile={isOpenMobileSidebar}
         onCloseMobile={() => setIsOpenMobileSidebar(false)}
+        birthdayCount7Days={upcomingBirthdays7Days.length}
       />
 
       {/* Main Content Area */}
@@ -979,6 +984,12 @@ export default function App() {
           pendingOfflineCount={pendingOfflineCount}
           onSyncOffline={handleSyncOffline}
           syncingOffline={syncingOffline}
+          members={members}
+          onNavigate={(v) => setCurrentView(v)}
+          onOpenMemberDetail={(m) => {
+            setDetailMember(m);
+            setShowMemberDetailModal(true);
+          }}
         />
 
         <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">

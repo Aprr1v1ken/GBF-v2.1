@@ -66,6 +66,14 @@ service cloud.firestore {
     match /financial_transactions/{txId} {
       allow read, write: if isAdmin() && validId(txId);
     }
+    match /service_registrations/{registrationId} {
+      allow create: if validId(registrationId)
+        && request.resource.data.applicant_name is string
+        && request.resource.data.applicant_name.size() <= 128
+        && request.resource.data.service_type is string
+        && request.resource.data.service_type.size() <= 32;
+      allow read, update, delete: if isAdmin() && validId(registrationId);
+    }
     match /users/{userId} {
       allow read, write: if false;
     }

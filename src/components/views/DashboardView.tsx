@@ -40,9 +40,21 @@ import {
   Baby,
   HelpCircle,
   Flame,
+  Heart,
+  Bell,
 } from 'lucide-react';
 import { formatRupiah } from '../../utils/church-logic.ts';
 import type { Member, Family, FinancialTransaction, ChurchEvent, ServiceSchedule } from '../../types/index.ts';
+import { NotificationCenter } from '../NotificationCenter.tsx';
+import {
+  getUpcomingBirthdays,
+  getUpcomingAnniversaries,
+  generateBirthdayWhatsAppMessage,
+  generateAnniversaryWhatsAppMessage,
+  type CelebrationItem,
+  type UpcomingBirthdayItem,
+  type UpcomingAnniversaryItem,
+} from '../../utils/celebrations.ts';
 import {
   ResponsiveContainer,
   BarChart,
@@ -132,8 +144,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const currentMonthName = INDONESIAN_MONTHS[currentMonth];
   const nextMonthName = INDONESIAN_MONTHS[nextMonth];
 
-  // Filters for birthday list
-  const [birthdayFilter, setBirthdayFilter] = useState<'all' | 'current' | 'next'>('all');
+  // Filters for birthday and wedding anniversary celebrations
+  const [celebrationMonthFilter, setCelebrationMonthFilter] = useState<'all' | 'current' | 'next'>('current');
+  const [celebrationTypeFilter, setCelebrationTypeFilter] = useState<'all' | 'birthday' | 'anniversary'>('all');
   const [selectedRayon, setSelectedRayon] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
@@ -270,92 +283,56 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     });
   }, [rayonCounts, members, totalSoul]);
 
-  const upcomingBirthdays = useMemo(() => {
-    const list: Array<{
-      member: Member;
-      day: number;
-      month: number;
-      monthName: string;
-      diffDays: number;
-      isToday: boolean;
-      isTomorrow: boolean;
-      turningAge: number;
-      isCurrentMonth: boolean;
-      isNextMonth: boolean;
-      targetDate: Date;
-    }> = [];
+  // Query upcoming member birthdays & wedding anniversaries
+  const allBirthdays = useMemo(() => {
+    return getUpcomingBirthdays(members);
+  }, [members]);
 
-    const todayMidnight = new Date(currentYear, currentMonth, currentDay).getTime();
+  const allAnniversaries = useMemo(() => {
+    return getUpcomingAnniversaries(members);
+  }, [members]);
 
-    for (const m of members) {
-      if (!m.birthDate || m.status !== 'Aktif') continue;
-      const parts = m.birthDate.split('-');
-      if (parts.length < 3) continue;
-      const bYear = parseInt(parts[0], 10);
-      const bMonth = parseInt(parts[1], 10) - 1; // 0-indexed
-      const bDay = parseInt(parts[2], 10);
-
-      const isCur = bMonth === currentMonth;
-      const isNxt = bMonth === nextMonth;
-
-      if (!isCur && !isNxt) continue;
-
-      let targetYear = currentYear;
-      if (currentMonth === 11 && isNxt) {
-        targetYear = currentYear + 1;
-      }
-
-      const targetDate = new Date(targetYear, bMonth, bDay);
-      const diffMs = targetDate.getTime() - todayMidnight;
-      const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
-
-      const isToday = diffDays === 0;
-      const isTomorrow = diffDays === 1;
-      const turningAge = targetYear - bYear;
-
-      list.push({
-        member: m,
-        day: bDay,
-        month: bMonth,
-        monthName: INDONESIAN_MONTHS[bMonth],
-        diffDays,
-        isToday,
-        isTomorrow,
-        turningAge,
-        isCurrentMonth: isCur,
-        isNextMonth: isNxt,
-        targetDate,
-      });
-    }
-
-    // Sort: upcoming today first, then closest upcoming days, then past birthdays in current month at end
-    list.sort((a, b) => {
+  const allCelebrations = useMemo(() => {
+    const combined: CelebrationItem[] = [...allBirthdays, ...allAnniversaries];
+    combined.sort((a, b) => {
       if (a.diffDays >= 0 && b.diffDays < 0) return -1;
       if (a.diffDays < 0 && b.diffDays >= 0) return 1;
-      return a.diffDays - b.diffDays;
+      if (a.diffDays !== b.diffDays) return a.diffDays - b.diffDays;
+      return a.type === 'birthday' ? -1 : 1;
     });
+    return combined;
+  }, [allBirthdays, allAnniversaries]);
 
-    return list;
-  }, [members, currentYear, currentMonth, nextMonth, currentDay]);
+  // Backward-compatibility aliases
+  const upcomingBirthdays = allBirthdays;
 
-  const filteredBirthdays = useMemo(() => {
-    return upcomingBirthdays.filter((item) => {
-      if (birthdayFilter === 'current' && !item.isCurrentMonth) return false;
-      if (birthdayFilter === 'next' && !item.isNextMonth) return false;
+  const filteredCelebrations = useMemo(() => {
+    return allCelebrations.filter((item) => {
+      if (celebrationTypeFilter === 'birthday' && item.type !== 'birthday') return false;
+      if (celebrationTypeFilter === 'anniversary' && item.type !== 'anniversary') return false;
+      if (celebrationMonthFilter === 'current' && !item.isCurrentMonth) return false;
+      if (celebrationMonthFilter === 'next' && !item.isNextMonth) return false;
       if (selectedRayon !== 'all' && item.member.rayonName !== selectedRayon) return false;
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
         const matchName = item.member.fullName.toLowerCase().includes(q);
         const matchNick = item.member.nickname?.toLowerCase().includes(q);
-        if (!matchName && !matchNick) return false;
+        const matchSpouse = (item as any).spouseName?.toLowerCase().includes(q);
+        const matchCouple = (item as any).coupleName?.toLowerCase().includes(q);
+        if (!matchName && !matchNick && !matchSpouse && !matchCouple) return false;
       }
       return true;
     });
-  }, [upcomingBirthdays, birthdayFilter, selectedRayon, searchQuery]);
+  }, [allCelebrations, celebrationTypeFilter, celebrationMonthFilter, selectedRayon, searchQuery]);
 
-  const todayCount = upcomingBirthdays.filter((b) => b.isToday).length;
-  const currentMonthCount = upcomingBirthdays.filter((b) => b.isCurrentMonth).length;
-  const nextMonthCount = upcomingBirthdays.filter((b) => b.isNextMonth).length;
+  // Backward-compatibility alias
+  const filteredBirthdays = filteredCelebrations.filter((c) => c.type === 'birthday') as UpcomingBirthdayItem[];
+
+  const todayCount = useMemo(() => allCelebrations.filter((b) => b.isToday).length, [allCelebrations]);
+  const currentMonthBirthdayCount = useMemo(() => allBirthdays.filter((b) => b.isCurrentMonth).length, [allBirthdays]);
+  const currentMonthAnniversaryCount = useMemo(() => allAnniversaries.filter((a) => a.isCurrentMonth).length, [allAnniversaries]);
+  const currentMonthCount = currentMonthBirthdayCount + currentMonthAnniversaryCount;
+  const nextMonthCount = useMemo(() => allCelebrations.filter((b) => b.isNextMonth).length, [allCelebrations]);
 
   return (
     <div className="space-y-6">
@@ -419,6 +396,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Automated Pastoral Notification Center for Upcoming Celebrations (Next 7 Days) */}
+      <NotificationCenter
+        members={members}
+        onOpenMemberDetail={onOpenMemberDetail}
+      />
 
       {/* 6 Key KPI Statistic Cards */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3.5">
@@ -770,7 +753,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
       </div>
 
-      {/* SECTION: UPCOMING MEMBER BIRTHDAYS (PASTORAL CARE & VISITS) */}
+      {/* SECTION: KALENDER PERAYAAN JEMAAT (HUT KELAHIRAN & HUT PERNIKAHAN) */}
       <div className="p-6 rounded-2xl bg-[#0c1329] border border-amber-500/25 shadow-xl space-y-5">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-800/80 pb-4">
           <div className="space-y-1">
@@ -778,8 +761,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               <div className="p-1.5 rounded-lg bg-pink-500/10 border border-pink-500/30 text-pink-400">
                 <Cake className="w-5 h-5" />
               </div>
+              <div className="p-1.5 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-300">
+                <Heart className="w-5 h-5" />
+              </div>
               <h3 className="text-base font-bold text-white tracking-wide flex items-center gap-2">
-                <span>Ulang Tahun Jemaat (Persiapan Kunjungan Pastoral)</span>
+                <span>Perayaan Jemaat: Ulang Tahun & Pernikahan (Pastoral Care)</span>
                 {todayCount > 0 && (
                   <span className="px-2.5 py-0.5 rounded-full bg-gradient-to-r from-amber-500 to-yellow-400 text-slate-950 font-extrabold text-[10px] animate-pulse">
                     🎉 {todayCount} Hari Ini!
@@ -788,60 +774,109 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               </h3>
             </div>
             <p className="text-xs text-slate-400">
-              Daftar warga jemaat yang berulang tahun pada bulan ini (<span className="text-amber-400 font-semibold">{currentMonthName}</span>) dan bulan depan (<span className="text-amber-400 font-semibold">{nextMonthName}</span>) untuk mendukung pelayanan perkunjungan pastoral Presbiter & Majelis Jemaat.
+              Otomatis mendata dan menyoroti warga jemaat yang berulang tahun kelahiran serta ulang tahun pernikahan pada bulan ini (<span className="text-amber-400 font-semibold">{currentMonthName}</span>) dan bulan depan (<span className="text-amber-400 font-semibold">{nextMonthName}</span>) untuk pelayanan kunjungan pastoral dan pengiriman ucapan WA Majelis.
             </p>
           </div>
 
-          {/* Quick Counter Pills */}
+          {/* Quick Counter Badges */}
           <div className="flex flex-wrap items-center gap-2 text-xs">
             <div className="px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 flex items-center gap-2">
-              <span className="text-slate-400 text-[11px]">Bulan Ini ({currentMonthName}):</span>
-              <span className="font-mono font-bold text-amber-400">{currentMonthCount} Jiwa</span>
+              <span className="text-slate-400 text-[11px]">🎂 HUT Bulan Ini:</span>
+              <span className="font-mono font-bold text-amber-400">{currentMonthBirthdayCount} Jiwa</span>
+            </div>
+            <div className="px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 flex items-center gap-2">
+              <span className="text-slate-400 text-[11px]">💍 Nikah Bulan Ini:</span>
+              <span className="font-mono font-bold text-rose-300">{currentMonthAnniversaryCount} Pasang</span>
             </div>
             <div className="px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 flex items-center gap-2">
               <span className="text-slate-400 text-[11px]">Bulan Depan ({nextMonthName}):</span>
-              <span className="font-mono font-bold text-sky-400">{nextMonthCount} Jiwa</span>
+              <span className="font-mono font-bold text-sky-400">{nextMonthCount} Perayaan</span>
             </div>
           </div>
         </div>
 
-        {/* Filter Bar */}
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-1">
-          {/* Month Selector Tabs */}
-          <div className="flex items-center p-1 rounded-xl bg-slate-900 border border-slate-800 text-xs">
-            <button
-              onClick={() => setBirthdayFilter('all')}
-              className={`px-3 py-1.5 rounded-lg font-semibold transition-colors cursor-pointer ${
-                birthdayFilter === 'all'
-                  ? 'bg-amber-500 text-slate-950 shadow-sm'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              Semua ({upcomingBirthdays.length})
-            </button>
-            <button
-              onClick={() => setBirthdayFilter('current')}
-              className={`px-3 py-1.5 rounded-lg font-semibold transition-colors cursor-pointer ${
-                birthdayFilter === 'current'
-                  ? 'bg-amber-500 text-slate-950 shadow-sm'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              Bulan Ini: {currentMonthName} ({currentMonthCount})
-            </button>
-            <button
-              onClick={() => setBirthdayFilter('next')}
-              className={`px-3 py-1.5 rounded-lg font-semibold transition-colors cursor-pointer ${
-                birthdayFilter === 'next'
-                  ? 'bg-amber-500 text-slate-950 shadow-sm'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              Bulan Depan: {nextMonthName} ({nextMonthCount})
-            </button>
+        {/* Filter Bar: Type Tabs, Month Tabs, Rayon, Search */}
+        <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 pt-1">
+          {/* Left: Type and Month Tabs */}
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Celebration Type */}
+            <div className="flex items-center p-1 rounded-xl bg-slate-900 border border-slate-800 text-xs">
+              <button
+                type="button"
+                onClick={() => setCelebrationTypeFilter('all')}
+                className={`px-3 py-1.5 rounded-lg font-semibold transition-colors cursor-pointer ${
+                  celebrationTypeFilter === 'all'
+                    ? 'bg-amber-500 text-slate-950 shadow-sm'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                Semua Perayaan
+              </button>
+              <button
+                type="button"
+                onClick={() => setCelebrationTypeFilter('birthday')}
+                className={`px-3 py-1.5 rounded-lg font-semibold transition-colors cursor-pointer flex items-center gap-1.5 ${
+                  celebrationTypeFilter === 'birthday'
+                    ? 'bg-amber-500 text-slate-950 shadow-sm'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <Cake className="w-3.5 h-3.5" />
+                <span>HUT Kelahiran</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setCelebrationTypeFilter('anniversary')}
+                className={`px-3 py-1.5 rounded-lg font-semibold transition-colors cursor-pointer flex items-center gap-1.5 ${
+                  celebrationTypeFilter === 'anniversary'
+                    ? 'bg-amber-500 text-slate-950 shadow-sm'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <Heart className="w-3.5 h-3.5" />
+                <span>HUT Pernikahan</span>
+              </button>
+            </div>
+
+            {/* Month Filter */}
+            <div className="flex items-center p-1 rounded-xl bg-slate-900 border border-slate-800 text-xs">
+              <button
+                type="button"
+                onClick={() => setCelebrationMonthFilter('current')}
+                className={`px-3 py-1.5 rounded-lg font-semibold transition-colors cursor-pointer ${
+                  celebrationMonthFilter === 'current'
+                    ? 'bg-amber-500 text-slate-950 shadow-sm'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                Bulan Ini ({currentMonthName})
+              </button>
+              <button
+                type="button"
+                onClick={() => setCelebrationMonthFilter('next')}
+                className={`px-3 py-1.5 rounded-lg font-semibold transition-colors cursor-pointer ${
+                  celebrationMonthFilter === 'next'
+                    ? 'bg-amber-500 text-slate-950 shadow-sm'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                Bulan Depan ({nextMonthName})
+              </button>
+              <button
+                type="button"
+                onClick={() => setCelebrationMonthFilter('all')}
+                className={`px-3 py-1.5 rounded-lg font-semibold transition-colors cursor-pointer ${
+                  celebrationMonthFilter === 'all'
+                    ? 'bg-amber-500 text-slate-950 shadow-sm'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                Semua ({allCelebrations.length})
+              </button>
+            </div>
           </div>
 
-          {/* Rayon & Search Filters */}
+          {/* Right: Rayon & Search */}
           <div className="flex items-center gap-2">
             <div className="relative">
               <select
@@ -858,7 +893,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               <Filter className="w-3 h-3 text-slate-400 absolute right-2.5 top-2.5 pointer-events-none" />
             </div>
 
-            <div className="relative flex-1 sm:w-44">
+            <div className="relative flex-1 sm:w-48">
               <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
               <input
                 type="text"
@@ -871,25 +906,25 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
         </div>
 
-        {/* Birthdays Grid / Empty State */}
-        {filteredBirthdays.length === 0 ? (
+        {/* Celebrations Grid / Empty State */}
+        {filteredCelebrations.length === 0 ? (
           <div className="p-8 rounded-2xl bg-slate-900/40 border border-dashed border-slate-800 text-center space-y-3">
             <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/25 flex items-center justify-center text-amber-400 mx-auto">
               <Gift className="w-6 h-6" />
             </div>
             <div className="space-y-1">
               <h4 className="text-sm font-bold text-white">
-                {upcomingBirthdays.length === 0
-                  ? 'Belum Ada Jadwal Ulang Tahun Jemaat'
-                  : 'Tidak Ditemukan Jemaat yang Cocok'}
+                {allCelebrations.length === 0
+                  ? 'Belum Ada Data Ulang Tahun atau Pernikahan Jemaat'
+                  : 'Tidak Ditemukan Perayaan yang Sesuai Filter'}
               </h4>
               <p className="text-xs text-slate-400 max-w-md mx-auto">
-                {upcomingBirthdays.length === 0
-                  ? `Belum ada anggota jemaat yang berulang tahun pada bulan ${currentMonthName} dan ${nextMonthName}. Data akan otomatis terdata saat anggota jemaat baru ditambahkan.`
-                  : 'Coba ubah filter bulan, rayon, atau kata kunci pencarian jemaat.'}
+                {allCelebrations.length === 0
+                  ? `Belum ada anggota jemaat yang berulang tahun atau merayakan HUT pernikahan pada periode ini. Data akan otomatis terdata saat anggota jemaat baru ditambahkan.`
+                  : 'Coba ubah kategori perayaan, filter bulan, rayon, atau kata kunci pencarian jemaat.'}
               </p>
             </div>
-            {upcomingBirthdays.length === 0 && (
+            {allCelebrations.length === 0 && (
               <button
                 onClick={onOpenAddMember}
                 className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 transition-colors cursor-pointer shadow-sm"
@@ -901,17 +936,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3.5">
-            {filteredBirthdays.map((item) => {
-              const cleanPhone = item.member.phone ? item.member.phone.replace(/[^0-9]/g, '') : '';
-              const waUrl = cleanPhone
-                ? `https://wa.me/${cleanPhone.startsWith('0') ? '62' + cleanPhone.slice(1) : cleanPhone}?text=${encodeURIComponent(
-                    `Syalom ${item.member.fullName}, kami segenap Majelis Jemaat GMIT Betel Fuimelang mengucapkan Selamat Ulang Tahun yang ke-${item.turningAge}! Kiranya berkat, damai sejahtera, dan sukacita dari Tuhan Yesus Kristus senantiasa melimpah dalam kehidupan dan keluarga.`
-                  )}`
-                : null;
+            {filteredCelebrations.map((item) => {
+              const isBirthday = item.type === 'birthday';
+              const bItem = item as UpcomingBirthdayItem;
+              const aItem = item as UpcomingAnniversaryItem;
+              const waUrl = item.waUrl;
 
               return (
                 <div
-                  key={item.member.id}
+                  key={item.id}
                   className={`p-4 rounded-2xl border transition-all flex flex-col justify-between gap-3 ${
                     item.isToday
                       ? 'bg-gradient-to-br from-[#1b1e10] via-[#141d2f] to-[#0c1329] border-amber-400/60 shadow-lg shadow-amber-500/10'
@@ -925,7 +958,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                         className={`w-13 h-13 rounded-2xl flex flex-col items-center justify-center shrink-0 border ${
                           item.isToday
                             ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-md font-extrabold'
-                            : 'bg-slate-900 text-amber-300 border-amber-500/30'
+                            : isBirthday
+                            ? 'bg-slate-900 text-pink-300 border-pink-500/30'
+                            : 'bg-slate-900 text-rose-300 border-rose-500/30'
                         }`}
                       >
                         <span className="text-lg font-mono font-extrabold leading-none">
@@ -936,13 +971,25 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                         </span>
                       </div>
 
-                      {/* Member Info */}
+                      {/* Member / Couple Info */}
                       <div className="min-w-0">
                         <div className="flex items-center gap-1.5 flex-wrap">
-                          <h4 className="font-bold text-white text-xs sm:text-sm truncate" title={item.member.fullName}>
-                            {item.member.fullName}
+                          <span
+                            className={`px-1.5 py-0.2 rounded text-[9px] font-bold uppercase ${
+                              isBirthday
+                                ? 'bg-pink-500/20 text-pink-300 border border-pink-500/30'
+                                : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                            }`}
+                          >
+                            {isBirthday ? '🎂 HUT' : '💍 Nikah'}
+                          </span>
+                          <h4
+                            className="font-bold text-white text-xs sm:text-sm truncate"
+                            title={isBirthday ? item.member.fullName : aItem.coupleName}
+                          >
+                            {isBirthday ? item.member.fullName : aItem.coupleName}
                           </h4>
-                          {item.member.nickname && (
+                          {isBirthday && item.member.nickname && (
                             <span className="text-[10px] text-slate-400 truncate">
                               ({item.member.nickname})
                             </span>
@@ -951,16 +998,31 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
                         <div className="flex items-center gap-1.5 mt-0.5 text-xs text-amber-400 font-semibold">
                           <PartyPopper className="w-3.5 h-3.5 shrink-0" />
-                          <span>HUT ke-{item.turningAge} Tahun</span>
+                          <span>
+                            {isBirthday
+                              ? `HUT ke-${bItem.turningAge} Tahun`
+                              : `HUT Pernikahan ke-${aItem.yearsMarried} Tahun`}
+                          </span>
                         </div>
 
-                        <div className="text-[11px] text-slate-400 flex items-center gap-2 mt-1">
+                        <div className="text-[11px] text-slate-400 flex items-center gap-2 mt-1 flex-wrap">
                           <span className="flex items-center gap-1">
-                            <MapPin className="w-3 h-3 text-slate-500" />
+                            <MapPin className="w-3 h-3 text-slate-500 shrink-0" />
                             <span>{item.member.rayonName || 'Rayon Jemaat'}</span>
                           </span>
                           <span>·</span>
-                          <span className="text-slate-300">{item.member.familyRole}</span>
+                          <span className="text-slate-300">
+                            {isBirthday ? item.member.familyRole : 'Pasangan Suami Istri'}
+                          </span>
+                          {item.member.phone && (
+                            <>
+                              <span>·</span>
+                              <span className="text-slate-400 flex items-center gap-1">
+                                <Phone className="w-2.5 h-2.5 text-slate-500" />
+                                <span>{item.member.phone}</span>
+                              </span>
+                            </>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -968,15 +1030,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     {/* Status Countdown Pill */}
                     <div className="shrink-0">
                       {item.isToday ? (
-                        <span className="px-2.5 py-1 rounded-full bg-amber-400 text-slate-950 font-extrabold text-[10px] tracking-wide shadow-sm animate-pulse flex items-center gap-1">
-                          <span>🎉 Hari Ini!</span>
+                        <span className="px-2.5 py-1 rounded-full bg-amber-400 text-slate-950 font-black text-[10px] tracking-wide animate-pulse shadow-sm flex items-center gap-1">
+                          🎉 HARI INI!
                         </span>
                       ) : item.isTomorrow ? (
-                        <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[10px] font-bold">
-                          Besok
+                        <span className="px-2 py-0.5 rounded-full bg-sky-500/20 text-sky-300 border border-sky-500/30 text-[10px] font-semibold">
+                          ⏰ Besok
                         </span>
-                      ) : item.diffDays > 1 && item.diffDays <= 7 ? (
-                        <span className="px-2 py-0.5 rounded-full bg-sky-500/20 text-sky-300 border border-sky-500/40 text-[10px] font-semibold">
+                      ) : item.diffDays > 0 && item.diffDays <= 7 ? (
+                        <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] font-semibold">
                           {item.diffDays} hari lagi
                         </span>
                       ) : item.diffDays > 7 ? (
@@ -995,7 +1057,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   <div className="pt-2.5 border-t border-slate-800/80 flex items-center justify-between gap-2 text-xs">
                     <span className="text-[10px] text-slate-400 flex items-center gap-1">
                       <HeartHandshake className="w-3 h-3 text-amber-400" />
-                      <span>Kunjungan Pastoral</span>
+                      <span>{isBirthday ? 'Pastoral HUT' : 'Pastoral Nikah'}</span>
                     </span>
 
                     <div className="flex items-center gap-1.5">
@@ -1005,30 +1067,32 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                           target="_blank"
                           rel="noreferrer"
                           className="px-2.5 py-1 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 text-[11px] font-semibold flex items-center gap-1 transition-colors"
-                          title="Kirim pesan ucapan selamat HUT via WhatsApp"
+                          title="Kirim pesan ucapan selamat via WhatsApp"
                         >
                           <MessageCircle className="w-3 h-3" />
-                          <span>WhatsApp</span>
+                          <span>Kirim WA</span>
                         </a>
                       ) : (
                         <span className="text-[10px] text-slate-500 italic">No HP (-)</span>
                       )}
 
                       <button
+                        type="button"
                         onClick={() => onNavigate('ai-assistant')}
                         className="px-2 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-[11px] font-semibold flex items-center gap-1 transition-colors cursor-pointer"
-                        title="Susun naskah doa pastoral & ucapan ulang tahun dengan Asisten AI"
+                        title="Susun naskah doa pastoral & ucapan perayaan dengan Asisten AI"
                       >
                         <Sparkles className="w-3 h-3 text-amber-400" />
                         <span>Doa AI</span>
                       </button>
 
                       <button
+                        type="button"
                         onClick={() =>
                           onOpenMemberDetail ? onOpenMemberDetail(item.member) : onNavigate('members')
                         }
                         className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-[11px] font-medium flex items-center gap-1 transition-colors cursor-pointer"
-                        title="Lihat data keluarga & alamat lengkap"
+                        title="Lihat data keluarga & profil jemaat"
                       >
                         <User className="w-3 h-3 text-amber-400" />
                         <span>Data Jemaat</span>
