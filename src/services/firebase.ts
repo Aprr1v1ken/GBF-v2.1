@@ -4,12 +4,16 @@ import { initializeFirestore, doc, getDocFromServer } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 export const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
+export const FIRESTORE_DATABASE_ID =
+  (firebaseConfig as any).firestoreDatabaseId ||
+  'ai-studio-gmitbetelfuimela-5319dba1-69fb-4d38-bee2-9c9529e50460';
+
 export const db = initializeFirestore(
   app,
   {
     experimentalForceLongPolling: true,
   },
-  (firebaseConfig as any).firestoreDatabaseId
+  FIRESTORE_DATABASE_ID
 );
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();

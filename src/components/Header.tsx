@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import type { User as UserType, Member } from '../types/index.ts';
 import { getUpcomingBirthdays } from '../utils/celebrations.ts';
+import { PWAInstallButton } from './PWAInstallButton.tsx';
 
 interface HeaderProps {
   currentView: string;
@@ -328,6 +329,9 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           )}
         </div>
+
+        {/* PWA Install Button for mobile & desktop */}
+        <PWAInstallButton variant="header" />
 
         {/* Offline / Online Network Indicator */}
         <div className="flex items-center gap-2">

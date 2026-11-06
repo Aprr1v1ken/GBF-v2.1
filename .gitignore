@@ -9,3 +9,7 @@ coverage/
 .env.*.local
 .vercel/
 .env
+sysjeger.sqlite*
+.gmp_cache/
+dev-dist/
+.aistudio/

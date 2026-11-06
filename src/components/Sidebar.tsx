@@ -28,6 +28,7 @@ import {
   Bot,
 } from 'lucide-react';
 import type { User } from '../types/index.ts';
+import { PWAInstallButton } from './PWAInstallButton.tsx';
 
 interface SidebarProps {
   currentView: string;
@@ -206,6 +207,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {/* User Card & Footer */}
         <div className="p-3 border-t border-amber-500/20 bg-[#060a16] space-y-2">
+          {/* PWA Mobile & Offline Install Button */}
+          <PWAInstallButton variant="sidebar" />
+
           {currentUser && (
             <div className="p-2.5 rounded-lg bg-[#0e162d] border border-amber-500/20">
               <div className="flex items-center justify-between text-xs text-slate-300 mb-1">

@@ -121,7 +121,7 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
               {isIOS ? (
                 <>
                   <p className="text-slate-200">
-                    Untuk memasang <strong>SYSJEGER V2.0</strong> ke layar beranda iPhone / iPad tanpa melalui App Store:
+                    Untuk memasang <strong>SYSJEGER Versi 2.1 Pro</strong> ke layar beranda iPhone / iPad tanpa melalui App Store:
                   </p>
                   <div className="p-3 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-2.5">
                     <div className="flex items-start gap-2.5">
