@@ -3,7 +3,6 @@ import react from '@vitejs/plugin-react';
 import path from 'path';
 import { defineConfig } from 'vite';
 import express from 'express';
-import { apiRouter } from './server/api.ts';
 import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig(() => {
@@ -99,7 +98,9 @@ export default defineConfig(() => {
       }),
       {
         name: 'api-server-middleware',
-        configureServer(server) {
+        async configureServer(server) {
+          const apiModuleUrl = new URL('./server/api.ts', import.meta.url);
+          const { apiRouter } = await import(apiModuleUrl.href);
           const app = express();
           app.use(express.json({ limit: '10mb' }));
           app.use(express.urlencoded({ extended: true }));
