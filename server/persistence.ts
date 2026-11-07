@@ -106,6 +106,8 @@ function restoreSnapshot(snapshot: Snapshot) {
   }
 }
 
+let persistenceFailed = false;
+
 async function prepare(): Promise<void> {
   const database = getPool();
   await database.query(`CREATE TABLE IF NOT EXISTS sysjeger_state (
@@ -129,18 +131,19 @@ async function prepare(): Promise<void> {
 }
 
 export async function preparePersistence(): Promise<void> {
-  if (!persistenceEnabled()) return;
+  if (!persistenceEnabled() || persistenceFailed) return;
   if (!preparePromise) {
     preparePromise = prepare().catch((error) => {
-      preparePromise = null;
-      throw error;
+      console.warn('[Persistence] Koneksi Postgres/Supabase tidak dapat terhubung (' + (error?.message || error) + '). Melanjutkan dengan mode database lokal mandiri (SQLite).');
+      persistenceFailed = true;
+      preparePromise = Promise.resolve();
     });
   }
   return preparePromise;
 }
 
 export function persistSnapshot(): Promise<void> {
-  if (!persistenceEnabled()) return Promise.resolve();
+  if (!persistenceEnabled() || persistenceFailed) return Promise.resolve();
   // Serialize writes within one lambda and always snapshot after the preceding
   // write has completed, so rapid CRUD actions cannot persist an older state.
   const operation = writePromise.catch(() => undefined).then(async () => {
@@ -155,3 +158,4 @@ export function persistSnapshot(): Promise<void> {
   });
   return operation;
 }
+

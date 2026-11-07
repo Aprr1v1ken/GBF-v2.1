@@ -1,0 +1,12 @@
+# Netlify configuration for SYSJEGER V2.0 GMIT Betel Fuimelang
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

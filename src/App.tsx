@@ -525,8 +525,9 @@ export default function App() {
           });
           // Immediately update state and persistent local cache
           if (res.member) {
+            const newMember = res.member;
             setMembers((prev) => {
-              const updated = [res.member, ...prev.filter((m) => m.id !== res.member.id)];
+              const updated = [newMember, ...prev.filter((m) => m.id !== newMember.id)];
               cacheMembersLocally(updated);
               return updated;
             });

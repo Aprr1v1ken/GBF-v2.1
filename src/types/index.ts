@@ -15,6 +15,7 @@ export interface User {
   phone?: string;
   email?: string;
   status: 'Aktif' | 'Nonaktif';
+  createdAt?: string;
 }
 
 export type Gender = 'Laki-laki' | 'Perempuan';
