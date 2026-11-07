@@ -13,3 +13,4 @@ sysjeger.sqlite*
 .gmp_cache/
 dev-dist/
 .aistudio/
+.playwright-cli/

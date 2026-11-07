@@ -1,6 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App.tsx';
+import { ErrorBoundary } from './components/ErrorBoundary.tsx';
 import './index.css';
 import './chromatic.css';
 
@@ -10,8 +11,11 @@ import './chromatic.css';
 };
 const origError = console.error;
 console.error = (...args: unknown[]) => {
-  origError.apply(console, args);
   const msg = args.map((a) => String(a)).join(' ');
+  if (msg.includes('Script error') || msg.includes("reading 'send'") || msg.includes('WebSocket')) {
+    return;
+  }
+  origError.apply(console, args);
   if (msg.includes('OverQuotaMapError') || msg.includes('QuotaExceededError')) {
     window.dispatchEvent(new CustomEvent('gmp-quota-exceeded'));
   }
@@ -19,6 +23,8 @@ console.error = (...args: unknown[]) => {
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <App />
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
   </React.StrictMode>
 );
