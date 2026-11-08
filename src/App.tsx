@@ -97,6 +97,15 @@ export default function App() {
   });
 
   const [currentView, setCurrentView] = useState('dashboard');
+  const mainContentRef = React.useRef<HTMLElement | null>(null);
+
+  // Smoothly reset the main content viewport to the top on navigation
+  useEffect(() => {
+    if (mainContentRef.current) {
+      mainContentRef.current.scrollTop = 0;
+    }
+  }, [currentView]);
+
   // If not logged in, showPublicSite is forced to true
   const [showPublicSite, setShowPublicSite] = useState<boolean>(() => {
     try {
@@ -993,8 +1002,9 @@ export default function App() {
           }}
         />
 
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
-          <React.Suspense fallback={<div className="chroma-card p-8 rounded-2xl text-center text-sm text-cyan-200">Memuat modul pelayanan…</div>}>
+        <main ref={mainContentRef} className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
+          <div key={currentView} className="view-fade-in min-h-full w-full">
+            <React.Suspense fallback={<div className="chroma-card p-8 rounded-2xl text-center text-sm text-cyan-200">Memuat modul pelayanan…</div>}>
           {currentView === 'dashboard' && (
             <DashboardView
               stats={stats}
@@ -1337,6 +1347,7 @@ export default function App() {
             <N8nIntegrationView />
           )}
           </React.Suspense>
+          </div>
         </main>
       </div>
 
