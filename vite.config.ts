@@ -1,5 +1,6 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
+import fs from 'fs';
 import path from 'path';
 import { defineConfig } from 'vite';
 import express from 'express';
@@ -104,6 +105,15 @@ export default defineConfig(() => {
           const app = express();
           app.use(express.json({ limit: '10mb' }));
           app.use(express.urlencoded({ extended: true }));
+          app.get('/gmit-betel-fuimelang.zip', (_req, res) => {
+            const publicZip = path.resolve(process.cwd(), 'public', 'gmit-betel-fuimelang.zip');
+            if (fs.existsSync(publicZip)) {
+              res.setHeader('Content-Type', 'application/zip');
+              res.setHeader('Content-Disposition', 'attachment; filename="gmit-betel-fuimelang.zip"');
+              return res.sendFile(publicZip);
+            }
+            res.status(404).send('ZIP file not found');
+          });
           app.use('/api', apiRouter);
           server.middlewares.use(app);
         },

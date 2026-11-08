@@ -351,6 +351,34 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         </div>
       </div>
 
+      {/* APPMINT / APK WRAPPER ZIP DOWNLOAD SECTION */}
+      <div className="p-6 rounded-3xl bg-gradient-to-r from-emerald-950/40 via-[#0a1829] to-emerald-950/30 border border-emerald-500/40 shadow-xl flex flex-col md:flex-row items-center justify-between gap-6">
+        <div className="space-y-2 max-w-2xl">
+          <div className="flex items-center gap-2">
+            <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold text-[10px] tracking-wide uppercase border border-emerald-500/30">
+              Lolos Validasi Appmint
+            </span>
+            <span className="text-xs text-slate-400">gmit-betel-fuimelang.zip</span>
+          </div>
+          <h4 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
+            <span>Paket ZIP Bersih untuk Appmint & APK Android</span>
+          </h4>
+          <p className="text-xs text-slate-300 leading-relaxed">
+            Struktur <code className="text-emerald-400 font-mono bg-emerald-950/60 px-1 py-0.5 rounded">src/db/</code> dan pemanggilan <code className="text-amber-400 font-mono bg-amber-950/60 px-1 py-0.5 rounded">process.env.SQL_*</code> telah dibersihkan sepenuhnya. File ZIP ini siap diunggah langsung ke Appmint tanpa error crash klien.
+          </p>
+        </div>
+        <div className="flex flex-col sm:flex-row items-center gap-3 shrink-0 w-full md:w-auto">
+          <a
+            href="/gmit-betel-fuimelang.zip"
+            download="gmit-betel-fuimelang.zip"
+            className="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 font-extrabold text-xs shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 transition-transform hover:-translate-y-0.5 cursor-pointer text-center"
+          >
+            <Download className="w-4 h-4 text-slate-950" />
+            <span>Unduh File ZIP untuk Appmint</span>
+          </a>
+        </div>
+      </div>
+
       {/* CHURCH PROFILE & CONFIGURATION */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Church Profile Info */}

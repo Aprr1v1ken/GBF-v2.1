@@ -1,4 +1,6 @@
 import { Router } from 'express';
+import fs from 'node:fs';
+import path from 'node:path';
 import { getDb, purgeAllSampleData } from './db.ts';
 import {
   findUserByEmail,
@@ -32,7 +34,7 @@ export const apiRouter = Router();
 apiRouter.use(async (req, res, next) => {
   const path = req.path.replace(/\/$/, '') || '/';
   // Critical auth and health paths must never be blocked by cloud database state
-  if (path === '/auth/login' || path === '/auth/session' || path === '/health' || path.startsWith('/ai/')) {
+  if (path === '/auth/login' || path === '/auth/session' || path === '/health' || path === '/download-zip' || path.startsWith('/ai/')) {
     return next();
   }
   if (!persistenceEnabled()) return next();
@@ -66,11 +68,11 @@ apiRouter.use(async (req, res, next) => {
 // Public pages only receive aggregate/content endpoints. Every private read or
 // mutation requires a server-issued session; hiding a menu in React is not an
 // authorization boundary.
-const PUBLIC_READ_PATHS = new Set(['/health', '/stats', '/events', '/schedules', '/announcements', '/rayons', '/categorials', '/locations']);
+const PUBLIC_READ_PATHS = new Set(['/health', '/download-zip', '/stats', '/events', '/schedules', '/announcements', '/rayons', '/categorials', '/locations']);
 apiRouter.use((req, res, next) => {
   const path = req.path.replace(/\/$/, '') || '/';
   const publicWebAuthn = path === '/auth/webauthn/authentication-options' || path === '/auth/webauthn/authenticate';
-  if (req.method === 'OPTIONS' || path === '/auth/login' || path === '/auth/google' || path.startsWith('/n8n') || (path === '/service-registrations' && req.method === 'POST') || publicWebAuthn) return next();
+  if (req.method === 'OPTIONS' || path === '/auth/login' || path === '/auth/google' || path === '/download-zip' || path.startsWith('/n8n') || (path === '/service-registrations' && req.method === 'POST') || publicWebAuthn) return next();
   if (req.method === 'GET' && path === '/ai/status') return next();
   if (req.method === 'GET' && PUBLIC_READ_PATHS.has(path)) return next();
 
@@ -1844,6 +1846,16 @@ apiRouter.put('/corrections/:id', (req, res) => {
 apiRouter.get('/health', (_req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   res.json({ success: true, service: 'sysjeger-api', storage: persistenceMode(), timestamp: new Date().toISOString() });
+});
+
+apiRouter.get('/download-zip', (_req, res) => {
+  const publicZip = path.resolve(process.cwd(), 'public', 'gmit-betel-fuimelang.zip');
+  if (fs.existsSync(publicZip)) {
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', 'attachment; filename="gmit-betel-fuimelang.zip"');
+    return res.sendFile(publicZip);
+  }
+  res.status(404).json({ success: false, message: 'File ZIP belum dibuat.' });
 });
 
 apiRouter.get('/stats', (req, res) => {
