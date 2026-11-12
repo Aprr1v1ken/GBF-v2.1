@@ -42,8 +42,9 @@ export interface ParsedImportRow {
   status: 'Aktif' | 'Pindah' | 'Meninggal';
   notes?: string;
 
-  // Validation
+  // Validation & Error Marking
   isValid: boolean;
+  hasWarning?: boolean;
   errors: string[];
 }
 
@@ -672,30 +673,41 @@ export async function parseExcelOrCsvFile(
     if (/pindah/i.test(statusStr)) status = 'Pindah';
     else if (/meninggal/i.test(statusStr)) status = 'Meninggal';
 
-    const notes = String(getVal('Catatan', 'Keterangan', 'notes') || '').trim();
+    const rawNotes = String(getVal('Catatan', 'Keterangan', 'notes') || '').trim();
 
-    // Validation checks
+    // Validation checks - Rows with issues will STILL be imported and marked with warning tag for user to edit!
     const errors: string[] = [];
     if (!fullName || fullName.length < 2) {
-      errors.push('Nama lengkap minimal 2 karakter');
+      errors.push('Nama lengkap belum diisi / kurang dari 2 karakter');
     }
     if (!birthDate) {
-      errors.push('Tanggal lahir wajib diisi (format YYYY-MM-DD)');
+      errors.push('Tanggal lahir kosong atau format tidak sesuai');
     }
     if (nik && nik.length > 0 && nik.length !== 16) {
-      errors.push(`NIK harus tepat 16 digit angka (saat ini ${nik.length} digit)`);
+      errors.push(`NIK ${nik.length} digit (standar 16 digit)`);
+    }
+
+    const hasWarning = errors.length > 0;
+    // Safe fallbacks so the row can be cleanly saved into SQLite database without error
+    const safeFullName = fullName && fullName.length >= 2 ? fullName : (fullName ? `${fullName} (Perlu Koreksi Nama)` : `Jemaat Baris ${i + 1} (Perlu Koreksi Nama)`);
+    const safeBirthDate = birthDate || '2000-01-01';
+
+    let finalNotes = rawNotes;
+    if (hasWarning) {
+      const warningTag = `[⚠️ PERLU KOREKSI: ${errors.join('; ')}]`;
+      finalNotes = finalNotes ? `${warningTag} ${finalNotes}` : warningTag;
     }
 
     const rowObj: ParsedImportRow = {
       familyCardNo,
       headOfFamilyName,
       familyRole,
-      fullName,
+      fullName: safeFullName,
       nickname: String(getVal('Nama_Panggilan', 'Panggilan', 'nickname') || '').trim(),
       nik,
       gender,
       birthPlace,
-      birthDate,
+      birthDate: safeBirthDate,
       address,
       kelurahan,
       kecamatan,
@@ -718,8 +730,9 @@ export async function parseExcelOrCsvFile(
       education,
       occupation,
       status,
-      notes,
-      isValid: errors.length === 0,
+      notes: finalNotes,
+      isValid: true, // Always true so row is preserved and inserted
+      hasWarning,
       errors,
     };
 
@@ -755,8 +768,8 @@ export async function parseExcelOrCsvFile(
   }
 
   const detectedFamilies = Array.from(familiesMap.values());
-  const totalValid = parsedRows.filter((r) => r.isValid).length;
-  const totalInvalid = parsedRows.filter((r) => !r.isValid).length;
+  const totalValid = parsedRows.filter((r) => !r.hasWarning).length;
+  const totalInvalid = parsedRows.filter((r) => r.hasWarning).length;
 
   return {
     rows: parsedRows,

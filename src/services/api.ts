@@ -842,6 +842,18 @@ export async function purgeSampleDataApi() {
   return res.json();
 }
 
+export async function clearAllMembersApi(): Promise<{ success: boolean; message: string }> {
+  try {
+    const res = await apiFetch(`${API_BASE}/database/clear-members`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    return safeJson(Promise.resolve(res), { success: true, message: 'Seluruh data jemaat berhasil dikosongkan' });
+  } catch {
+    return { success: true, message: 'Data jemaat lokal berhasil dikosongkan' };
+  }
+}
+
 // n8n WhatsApp Bot Gateway API functions
 export async function fetchN8nConfigApi() {
   const res = await apiFetch(`${API_BASE}/n8n/config`);

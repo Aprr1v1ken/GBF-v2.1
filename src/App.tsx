@@ -908,6 +908,19 @@ export default function App() {
     return res;
   };
 
+  // Clear all members handler
+  const handleClearAllMembers = async () => {
+    try {
+      const res = await api.clearAllMembersApi();
+      cacheMembersLocally([]);
+      await loadAllData();
+      return res.success;
+    } catch (e) {
+      console.error('Failed to clear members:', e);
+      return false;
+    }
+  };
+
   // Active member for Portal
   const activePortalMember = currentUser?.memberId
     ? members.find((m) => m.id === currentUser.memberId) || null
@@ -1060,6 +1073,7 @@ export default function App() {
               onDeleteMember={handleDeleteMember}
               onOpenImportModal={() => setShowImportModal(true)}
               onOpenKoboExport={() => setShowKoboExportModal(true)}
+              onClearAllMembers={handleClearAllMembers}
               onOpenPrintReport={() => {
                 setReportType('members');
                 setShowPrintReportModal(true);
@@ -1408,6 +1422,7 @@ export default function App() {
         isOpen={showImportModal}
         onClose={() => setShowImportModal(false)}
         onImport={handleImportMembers}
+        onClearExistingMembers={handleClearAllMembers}
         rayons={rayons}
         categorials={categorials}
         families={families}

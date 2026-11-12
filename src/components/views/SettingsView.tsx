@@ -364,7 +364,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             <span>Paket ZIP Bersih untuk Appmint & APK Android</span>
           </h4>
           <p className="text-xs text-slate-300 leading-relaxed">
-            Struktur <code className="text-emerald-400 font-mono bg-emerald-950/60 px-1 py-0.5 rounded">src/db/</code> dan pemanggilan <code className="text-amber-400 font-mono bg-amber-950/60 px-1 py-0.5 rounded">process.env.SQL_*</code> telah dibersihkan sepenuhnya. File ZIP ini siap diunggah langsung ke Appmint tanpa error crash klien.
+            Seluruh integrasi database dan API telah terisolasi aman di server. Kode klien murni kompatibel dengan WebView browser dan aplikasi mobile Android tanpa dependensi server-side.
           </p>
         </div>
         <div className="flex flex-col sm:flex-row items-center gap-3 shrink-0 w-full md:w-auto">

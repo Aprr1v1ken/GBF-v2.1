@@ -1962,6 +1962,7 @@ apiRouter.post('/import/members', (req, res) => {
 
   let successCount = 0;
   let familiesCreatedCount = 0;
+  const warnings: string[] = [];
   const errors: string[] = [];
   const now = new Date().toISOString().substring(0, 10);
 
@@ -2052,11 +2053,27 @@ apiRouter.post('/import/members', (req, res) => {
       if (!resolvedCatId && allCategorials.length > 0) resolvedCatId = allCategorials[0].id;
       item.categorialGroupId = resolvedCatId;
 
-      // Validate Member
+      // Validate Member - Imperfect rows will STILL be imported with safe defaults & warning tag
       const v = validateMemberInput(item);
       if (!v.valid) {
-        errors.push(`Baris ${i + 1} (${item.fullName || 'Tanpa Nama'}): ${v.errors.join(', ')}`);
-        continue;
+        warnings.push(`Baris ${i + 1} (${item.fullName || 'Data Jemaat'}): Ditandai untuk koreksi manual (${v.errors.join(', ')})`);
+        
+        // Provide safe defaults so database insert succeeds cleanly
+        if (!item.fullName || item.fullName.trim().length < 2) {
+          item.fullName = item.fullName?.trim() ? `${item.fullName} (Perlu Koreksi Nama)` : `Jemaat Baris ${i + 1} (Perlu Koreksi Nama)`;
+        }
+        if (!item.birthDate) item.birthDate = '2000-01-01';
+        if (!item.gender) item.gender = 'Laki-laki';
+        if (!item.familyRole) item.familyRole = 'Anggota';
+        if (!item.maritalStatus) item.maritalStatus = 'Belum Menikah';
+        if (!item.membershipStatus) item.membershipStatus = 'Tetap';
+        if (!item.status) item.status = 'Aktif';
+        if (!item.address) item.address = 'Desa Lembur Tengah';
+
+        const warnNote = `[⚠️ PERLU KOREKSI: ${v.errors.join('; ')}]`;
+        if (!item.notes || !item.notes.includes('PERLU KOREKSI')) {
+          item.notes = item.notes ? `${warnNote} ${item.notes}` : warnNote;
+        }
       }
 
       // 3. Automatic Family Card (KK) Creation / Linking
@@ -2142,6 +2159,8 @@ apiRouter.post('/import/members', (req, res) => {
     success: true,
     imported: successCount,
     familiesCreated: familiesCreatedCount,
+    warningsCount: warnings.length,
+    warnings,
     failed: errors.length,
     errors,
   });
@@ -2188,6 +2207,35 @@ apiRouter.post('/database/clear-samples', (req, res) => {
     });
   } catch (err: any) {
     res.status(500).json({ success: false, message: 'Gagal membersihkan data contoh: ' + err.message });
+  }
+});
+
+// 18b. Purge All Member & Family Records (Preparation for fresh Excel import)
+apiRouter.post('/database/clear-members', (req, res) => {
+  try {
+    const db = getDb();
+    db.exec(`
+      DELETE FROM member_mutations;
+      DELETE FROM baptisms;
+      DELETE FROM confirmations;
+      DELETE FROM marriages;
+      DELETE FROM data_correction_requests;
+      DELETE FROM members;
+      DELETE FROM families;
+    `);
+    try {
+      db.prepare('UPDATE rayons SET family_count = 0, member_count = 0').run();
+    } catch {}
+    try {
+      db.prepare('UPDATE categorial_groups SET member_count = 0').run();
+    } catch {}
+    addAuditLog('superadmin', 'Super Admin', 'Pengosongan Database Jemaat', 'Database Jemaat', 'Mengosongkan seluruh database jemaat dan kartu keluarga untuk persiapan impor file Excel baru.');
+    res.json({
+      success: true,
+      message: 'Seluruh database jemaat dan kartu keluarga berhasil dikosongkan. Siap untuk mengunggah file Excel baru.',
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: 'Gagal mengosongkan data jemaat: ' + err.message });
   }
 });
 

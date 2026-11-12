@@ -27,6 +27,7 @@ interface ImportModalProps {
   onImport: (
     members: Partial<Member>[]
   ) => Promise<{ success: boolean; imported: number; familiesCreated?: number; failed: number; errors: string[] }>;
+  onClearExistingMembers?: () => Promise<boolean>;
   rayons: Rayon[];
   categorials: CategorialGroup[];
   families?: Family[];
@@ -37,6 +38,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
   isOpen,
   onClose,
   onImport,
+  onClearExistingMembers,
   rayons,
   categorials,
   families = [],
@@ -48,9 +50,14 @@ export const ImportModal: React.FC<ImportModalProps> = ({
   const [previewRows, setPreviewRows] = useState<ParsedImportRow[]>([]);
   const [detectedFamilies, setDetectedFamilies] = useState<DetectedFamilyGroup[]>([]);
   const [importing, setImporting] = useState(false);
+  const [clearBeforeImport, setClearBeforeImport] = useState<boolean>(true);
+  const [clearing, setClearing] = useState(false);
+  const [clearSuccess, setClearSuccess] = useState<string | null>(null);
   const [result, setResult] = useState<{
     imported: number;
     familiesCreated?: number;
+    warningsCount?: number;
+    warnings?: string[];
     failed: number;
     errors: string[];
   } | null>(null);
@@ -101,16 +108,44 @@ export const ImportModal: React.FC<ImportModalProps> = ({
     }
   };
 
+  const handleClearNow = async () => {
+    if (!onClearExistingMembers) return;
+    if (
+      window.confirm(
+        'Konfirmasi Pengosongan Database Jemaat:\n\nApakah Anda yakin ingin menghapus SELURUH data jemaat dan kartu keluarga yang tersimpan saat ini?\n\nTindakan ini akan mengosongkan tabel jemaat dan keluarga agar siap diisi dengan file Excel baru.'
+      )
+    ) {
+      setClearing(true);
+      setClearSuccess(null);
+      try {
+        const ok = await onClearExistingMembers();
+        if (ok) {
+          setClearSuccess('Database jemaat dan kartu keluarga berhasil dikosongkan. Silakan unggah file Excel baru Anda.');
+        } else {
+          alert('Gagal mengosongkan database jemaat.');
+        }
+      } catch (err: any) {
+        alert('Gagal mengosongkan database: ' + (err.message || 'Error'));
+      } finally {
+        setClearing(false);
+      }
+    }
+  };
+
   const handleStartImport = async () => {
-    const validRows = previewRows.filter((r) => r.isValid);
-    if (validRows.length === 0) return;
+    if (previewRows.length === 0) return;
 
     setImporting(true);
     setResult(null);
 
     try {
-      // Map ParsedImportRow to Member partial objects
-      const membersPayload: Partial<Member>[] = validRows.map((r) => ({
+      // If user chose to clear database before import, purge existing records first
+      if (clearBeforeImport && onClearExistingMembers) {
+        await onClearExistingMembers();
+      }
+
+      // Map ParsedImportRow to Member partial objects (all rows are preserved and saved)
+      const membersPayload: Partial<Member>[] = previewRows.map((r) => ({
         familyCardNo: r.familyCardNo,
         familyName: r.headOfFamilyName,
         familyRole: r.familyRole as any,
@@ -147,6 +182,8 @@ export const ImportModal: React.FC<ImportModalProps> = ({
       setResult({
         imported: res.imported,
         familiesCreated: res.familiesCreated || 0,
+        warningsCount: (res as any).warningsCount || previewRows.filter((r) => r.hasWarning).length,
+        warnings: (res as any).warnings || [],
         failed: res.failed,
         errors: res.errors || [],
       });
@@ -154,7 +191,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
       setResult({
         imported: 0,
         familiesCreated: 0,
-        failed: validRows.length,
+        failed: previewRows.length,
         errors: [err.message || 'Terjadi kesalahan saat memproses impor di server.'],
       });
     } finally {
@@ -162,8 +199,8 @@ export const ImportModal: React.FC<ImportModalProps> = ({
     }
   };
 
-  const totalValid = previewRows.filter((r) => r.isValid).length;
-  const totalInvalid = previewRows.filter((r) => !r.isValid).length;
+  const totalValid = previewRows.filter((r) => !r.hasWarning).length;
+  const totalWarning = previewRows.filter((r) => r.hasWarning).length;
   const newFamiliesCount = detectedFamilies.filter((f) => f.isNew).length;
 
   return (
@@ -292,7 +329,80 @@ export const ImportModal: React.FC<ImportModalProps> = ({
         <div className="flex-1 overflow-y-auto p-6 space-y-4">
           {/* TAB 1: UPLOAD ZONE */}
           {activeTab === 'upload' && (
-            <div className="space-y-5">
+            <div className="space-y-4">
+              {/* Status Database Jemaat & Opsi Pengosongan */}
+              <div className="p-4 rounded-2xl bg-[#070b18] border border-amber-500/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <div className="space-y-1">
+                  <div className="text-xs font-bold text-white flex items-center gap-2">
+                    <span
+                      className={`w-2.5 h-2.5 rounded-full ${
+                        members.length === 0 ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'
+                      }`}
+                    />
+                    <span>Status Database Jemaat Saat Ini:</span>
+                    <span className="font-mono px-2 py-0.5 rounded bg-slate-800 text-amber-300 font-bold">
+                      {members.length} Jemaat
+                    </span>
+                    <span className="text-slate-500">/</span>
+                    <span className="font-mono px-2 py-0.5 rounded bg-slate-800 text-amber-300 font-bold">
+                      {families.length} KK
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-400">
+                    {members.length === 0 ? (
+                      <span className="text-emerald-400 font-semibold">
+                        ✓ Database saat ini kosong dan bersih. Anda dapat langsung mengunggah file Excel baru di bawah ini.
+                      </span>
+                    ) : (
+                      'Jika ingin mengganti seluruh data dengan file Excel yang baru, kosongkan database terlebih dahulu atau centang opsi pembersihan otomatis.'
+                    )}
+                  </p>
+                </div>
+
+                {members.length > 0 && onClearExistingMembers && (
+                  <button
+                    type="button"
+                    onClick={handleClearNow}
+                    disabled={clearing}
+                    className="px-3.5 py-2 rounded-xl bg-red-950/80 hover:bg-red-900 border border-red-700/60 text-red-200 text-xs font-bold transition-all cursor-pointer flex items-center gap-2 disabled:opacity-50 shrink-0 shadow-sm"
+                  >
+                    {clearing ? (
+                      <>
+                        <div className="w-3.5 h-3.5 border-2 border-red-300 border-t-transparent rounded-full animate-spin" />
+                        <span>Mengosongkan...</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>🗑️ Kosongkan Database Jemaat</span>
+                      </>
+                    )}
+                  </button>
+                )}
+              </div>
+
+              {clearSuccess && (
+                <div className="p-3 bg-emerald-950/80 border border-emerald-500/50 rounded-xl text-emerald-200 text-xs flex items-center gap-2 animate-fadeIn">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>{clearSuccess}</span>
+                </div>
+              )}
+
+              {/* Opsi Timpa / Kosongkan Otomatis */}
+              {onClearExistingMembers && (
+                <label className="flex items-center gap-3 p-3 rounded-xl bg-[#080e22] border border-slate-800 hover:border-slate-700 cursor-pointer transition-colors text-xs text-slate-300">
+                  <input
+                    type="checkbox"
+                    checked={clearBeforeImport}
+                    onChange={(e) => setClearBeforeImport(e.target.checked)}
+                    className="w-4 h-4 rounded text-amber-500 focus:ring-amber-400 cursor-pointer"
+                  />
+                  <span>
+                    <strong className="text-white">Kosongkan database jemaat &amp; KK lama secara otomatis</strong>{' '}
+                    sebelum mengimpor file ini (mencegah penumpukan atau duplikasi data lama).
+                  </span>
+                </label>
+              )}
+
               <div
                 onDragEnter={handleDrag}
                 onDragLeave={handleDrag}
@@ -391,20 +501,31 @@ export const ImportModal: React.FC<ImportModalProps> = ({
           {activeTab === 'preview_members' && (
             <div className="space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-2 p-3 rounded-xl bg-[#070b18] border border-slate-800 text-xs">
-                <div className="flex items-center gap-3">
+                <div className="flex flex-wrap items-center gap-3">
                   <span className="font-bold text-white">Total: {previewRows.length} Jemaat</span>
-                  <span className="text-emerald-400 font-semibold">✓ {totalValid} Siap Diimpor</span>
-                  {totalInvalid > 0 && (
-                    <span className="text-rose-400 font-semibold">✗ {totalInvalid} Tidak Lengkap / Error</span>
+                  <span className="text-emerald-400 font-semibold">✓ {totalValid} Format Lengkap</span>
+                  {totalWarning > 0 && (
+                    <span className="text-amber-400 font-semibold bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/30">
+                      ⚠️ {totalWarning} Perlu Koreksi (Tetap Diimpor)
+                    </span>
                   )}
                 </div>
                 <button
                   onClick={() => fileInputRef.current?.click()}
-                  className="text-amber-400 hover:text-amber-300 font-medium"
+                  className="text-amber-400 hover:text-amber-300 font-medium cursor-pointer"
                 >
                   Ganti File Excel
                 </button>
               </div>
+
+              {totalWarning > 0 && (
+                <div className="p-3 bg-amber-950/40 border border-amber-500/30 rounded-xl text-[11px] text-amber-200 flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+                  <span>
+                    <strong>Pemberitahuan:</strong> Sesuai permintaan Anda, {totalWarning} baris yang memiliki data kurang lengkap akan <strong>tetap dimasukkan ke database</strong> dan diberi tanda <code className="text-amber-300 font-bold bg-amber-950 px-1 py-0.5 rounded">[⚠️ Perlu Koreksi]</code> agar Anda dapat memperbaikinya langsung di daftar jemaat.
+                  </span>
+                </div>
+              )}
 
               <div className="rounded-xl border border-slate-800 overflow-hidden max-h-80 overflow-y-auto">
                 <table className="w-full text-left text-[11px] text-slate-300">
@@ -418,15 +539,29 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                       <th className="p-2.5">Tgl Lahir</th>
                       <th className="p-2.5">Rayon</th>
                       <th className="p-2.5">Kategorial</th>
-                      <th className="p-2.5">Status</th>
+                      <th className="p-2.5">Status Validasi</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800">
                     {previewRows.map((r, i) => (
-                      <tr key={i} className={r.isValid ? 'hover:bg-slate-800/40' : 'bg-rose-950/20'}>
+                      <tr
+                        key={i}
+                        className={
+                          r.hasWarning
+                            ? 'bg-amber-950/15 hover:bg-amber-950/30 border-l-2 border-l-amber-500'
+                            : 'hover:bg-slate-800/40'
+                        }
+                      >
                         <td className="p-2.5 text-slate-400 font-mono">{i + 1}</td>
                         <td className="p-2.5 font-bold text-white">
-                          <div>{r.fullName}</div>
+                          <div className="flex items-center gap-1.5">
+                            <span>{r.fullName}</span>
+                            {r.hasWarning && (
+                              <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 font-mono">
+                                Koreksi
+                              </span>
+                            )}
+                          </div>
                           {r.nickname && <div className="text-[10px] text-slate-400">({r.nickname})</div>}
                         </td>
                         <td className="p-2.5 font-mono text-[10px]">
@@ -443,18 +578,18 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                           </span>
                         </td>
                         <td className="p-2.5">
-                          {r.isValid ? (
+                          {!r.hasWarning ? (
                             <span className="inline-flex items-center gap-1 text-emerald-400 text-[10px] font-bold">
                               <CheckCircle2 className="w-3 h-3" />
-                              <span>Valid</span>
+                              <span>Lengkap</span>
                             </span>
                           ) : (
                             <span
-                              className="inline-flex items-center gap-1 text-rose-400 text-[10px] font-bold"
-                              title={r.errors.join(', ')}
+                              className="inline-flex items-center gap-1 text-amber-300 bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 rounded text-[10px] font-bold"
+                              title={r.errors.join('; ')}
                             >
-                              <AlertCircle className="w-3 h-3" />
-                              <span>{r.errors[0]}</span>
+                              <AlertCircle className="w-3 h-3 text-amber-400 shrink-0" />
+                              <span>⚠️ Perlu Koreksi</span>
                             </span>
                           )}
                         </td>
@@ -587,26 +722,39 @@ export const ImportModal: React.FC<ImportModalProps> = ({
           {/* HASIL IMPOR NOTIFIKASI */}
           {result && (
             <div
-              className={`p-4 rounded-xl border text-xs space-y-2 ${
+              className={`p-4 rounded-xl border text-xs space-y-2.5 ${
                 result.failed === 0
                   ? 'bg-emerald-950/60 border-emerald-500/50 text-emerald-200'
                   : 'bg-amber-950/60 border-amber-500/50 text-amber-200'
               }`}
             >
               <div className="font-bold text-sm flex items-center gap-2">
-                <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
                 <span>
                   Proses Selesai: {result.imported} Data Jemaat Berhasil Disimpan ke Database!
                 </span>
               </div>
+              {result.warningsCount !== undefined && result.warningsCount > 0 && (
+                <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg text-amber-200 flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                  <div>
+                    <div className="font-bold">
+                      {result.warningsCount} data jemaat ditandai [⚠️ Perlu Koreksi]
+                    </div>
+                    <div className="text-[11px] text-amber-300/90 mt-0.5">
+                      Data yang memiliki format kurang lengkap tetap dimasukkan ke database dan telah diberi tanda. Anda dapat menyaring dan memperbaikinya langsung dengan mengklik tombol "Ubah" pada menu Data Jemaat.
+                    </div>
+                  </div>
+                </div>
+              )}
               {result.familiesCreated !== undefined && result.familiesCreated > 0 && (
                 <div className="text-emerald-300 font-semibold pl-7">
                   ✓ {result.familiesCreated} Kartu Keluarga (KK) baru berhasil dibuat dan ditautkan secara otomatis.
                 </div>
               )}
               {result.failed > 0 && (
-                <div className="text-amber-300 pl-7 space-y-1">
-                  <div className="font-bold">{result.failed} baris ditolak karena format tidak lengkap:</div>
+                <div className="text-rose-300 pl-7 space-y-1">
+                  <div className="font-bold">{result.failed} baris gagal diproses server:</div>
                   <ul className="list-disc pl-4 space-y-0.5 text-[11px] max-h-32 overflow-y-auto">
                     {result.errors.map((e, idx) => (
                       <li key={idx}>{e}</li>
@@ -623,8 +771,11 @@ export const ImportModal: React.FC<ImportModalProps> = ({
           <div className="text-xs text-slate-400">
             {previewRows.length > 0 && (
               <span>
-                Siap memproses: <strong className="text-emerald-400">{totalValid} jemaat</strong> &amp;{' '}
-                <strong className="text-amber-400">{detectedFamilies.length} Kartu Keluarga</strong>
+                Siap memproses: <strong className="text-emerald-400">{previewRows.length} jemaat</strong>{' '}
+                {totalWarning > 0 && (
+                  <span className="text-amber-400 font-semibold">({totalWarning} perlu koreksi)</span>
+                )}{' '}
+                &amp; <strong className="text-amber-400">{detectedFamilies.length} Kartu Keluarga</strong>
               </span>
             )}
           </div>
@@ -641,7 +792,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
             {previewRows.length > 0 && (
               <button
                 type="button"
-                disabled={importing || totalValid === 0}
+                disabled={importing || previewRows.length === 0}
                 onClick={handleStartImport}
                 className="px-5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold transition-all shadow-md cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed text-xs flex items-center gap-2"
               >
@@ -653,7 +804,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                 ) : (
                   <>
                     <Upload className="w-3.5 h-3.5" />
-                    <span>Mulai Impor ({totalValid} Jemaat &amp; KK)</span>
+                    <span>Mulai Impor ({previewRows.length} Jemaat &amp; KK)</span>
                   </>
                 )}
               </button>

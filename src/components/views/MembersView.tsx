@@ -18,6 +18,7 @@ import {
   WifiOff,
   RefreshCw,
   FileSpreadsheet,
+  AlertCircle,
 } from 'lucide-react';
 import { calculateAge, formatDateDMY } from '../../utils/church-logic.ts';
 import type { Member, Rayon, CategorialGroup } from '../../types/index.ts';
@@ -34,6 +35,7 @@ interface MembersViewProps {
   onOpenImportModal: () => void;
   onOpenPrintReport: () => void;
   onOpenKoboExport?: () => void;
+  onClearAllMembers?: () => Promise<boolean>;
   isOnline?: boolean;
   onSyncOffline?: () => void;
   syncingOffline?: boolean;
@@ -50,6 +52,7 @@ export const MembersView: React.FC<MembersViewProps> = ({
   onOpenImportModal,
   onOpenPrintReport,
   onOpenKoboExport,
+  onClearAllMembers,
   isOnline = true,
   onSyncOffline,
   syncingOffline = false,
@@ -196,6 +199,25 @@ export const MembersView: React.FC<MembersViewProps> = ({
             <span>Impor Excel / CSV</span>
           </button>
 
+          {onClearAllMembers && members.length > 0 && (
+            <button
+              onClick={async () => {
+                if (
+                  window.confirm(
+                    'Konfirmasi Pengosongan Database Jemaat:\n\nApakah Anda yakin ingin menghapus SELURUH data jemaat dan kartu keluarga?\n\nTindakan ini untuk persiapan mengunggah file Excel baru. Data struktur Rayon, Kategorial, dan Akun Admin tetap tersimpan aman.'
+                  )
+                ) {
+                  await onClearAllMembers();
+                }
+              }}
+              className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-red-950/70 border border-red-800/60 text-red-300 hover:bg-red-900 transition-colors cursor-pointer"
+              title="Kosongkan seluruh data jemaat untuk upload file Excel baru"
+            >
+              <Trash2 className="w-3.5 h-3.5 text-red-400" />
+              <span>Kosongkan Database</span>
+            </button>
+          )}
+
           <button
             onClick={exportToCSV}
             className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg bg-slate-800 border border-slate-700 text-slate-200 hover:bg-slate-700 transition-colors cursor-pointer"
@@ -307,8 +329,38 @@ export const MembersView: React.FC<MembersViewProps> = ({
             <tbody className="divide-y divide-slate-800">
               {filteredMembers.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-8 text-center text-slate-500">
-                    Tidak ada data jemaat yang sesuai kriteria pencarian.
+                  <td colSpan={8} className="py-12 text-center">
+                    {members.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center max-w-md mx-auto space-y-3 px-4">
+                        <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400">
+                          <Users className="w-6 h-6" />
+                        </div>
+                        <div className="text-sm font-bold text-white">Database Jemaat Bersih &amp; Kosong</div>
+                        <p className="text-xs text-slate-400 leading-relaxed">
+                          Seluruh data jemaat sebelumnya telah berhasil dikosongkan. Silakan unggah file Excel jemaat yang baru untuk mengisi database atau tambah jemaat secara manual.
+                        </p>
+                        <div className="flex flex-wrap items-center justify-center gap-2.5 pt-2">
+                          <button
+                            type="button"
+                            onClick={onOpenImportModal}
+                            className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
+                          >
+                            <Upload className="w-4 h-4" />
+                            <span>Unggah File Excel Baru</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={onOpenAddModal}
+                            className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold transition-all border border-slate-700 flex items-center gap-1.5 cursor-pointer"
+                          >
+                            <UserPlus className="w-4 h-4" />
+                            <span>+ Tambah Manual</span>
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-slate-500 text-xs py-4">Tidak ada data jemaat yang sesuai kriteria pencarian.</div>
+                    )}
                   </td>
                 </tr>
               ) : (
