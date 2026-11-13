@@ -156,7 +156,11 @@ export function buildAgePyramidData(
     };
   });
 
-  const domainMax = maxWing <= 4 ? 5 : Math.ceil(maxWing * 1.15);
+  const rawMax = maxWing <= 4 ? 6 : Math.ceil(maxWing * 1.15);
+  // Pick a clean half-step so domainMax = halfStep * 2 gives crisp symmetric integer ticks: [-domainMax, -halfStep, 0, halfStep, domainMax]
+  const niceSteps = [3, 4, 5, 8, 10, 15, 20, 25, 30, 40, 50, 75, 100, 150, 200, 250, 500, 1000];
+  const halfStep = niceSteps.find((s) => s * 2 >= rawMax) || Math.ceil(rawMax / 2);
+  const domainMax = halfStep * 2;
 
   return {
     cohorts,

@@ -107,6 +107,8 @@ test('buildAgePyramidData accurately buckets Laki-laki and Perempuan across 8 co
   });
   assert.equal(rayonOneOnly.totalWithValidAge, 4);
   assert.equal(rayonOneOnly.cohorts.length, 5);
+  assert.equal(detailed.domainMax % 2, 0);
+  assert.ok(detailed.domainMax >= 6);
 });
 
 test('universal offline mutation queue compacts offline edits/deletes and syncs reliably', async () => {

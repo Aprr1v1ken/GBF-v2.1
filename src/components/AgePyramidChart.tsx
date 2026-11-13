@@ -294,6 +294,13 @@ export const AgePyramidChart: React.FC<AgePyramidChartProps> = ({
                 <XAxis
                   type="number"
                   domain={[-summary.domainMax, summary.domainMax]}
+                  ticks={[
+                    -summary.domainMax,
+                    -summary.domainMax / 2,
+                    0,
+                    summary.domainMax / 2,
+                    summary.domainMax,
+                  ]}
                   tickFormatter={(val: number) => String(Math.abs(val))}
                   stroke="#94a3b8"
                   fontSize={11}
@@ -401,7 +408,13 @@ export const AgePyramidChart: React.FC<AgePyramidChartProps> = ({
           </div>
 
           {/* Interactive Cohort Pills Strip for Mobile & Quick Inspection */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2 pt-1">
+          <div
+            className={`grid gap-2 pt-1 ${
+              granularity === 'gmit'
+                ? 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-5'
+                : 'grid-cols-2 sm:grid-cols-4 lg:grid-cols-8'
+            }`}
+          >
             {summary.cohorts.map((cohort) => {
               const isSelected = selectedCohortKey === cohort.key;
               return (
