@@ -83,6 +83,13 @@
           event.stopImmediatePropagation();
         }
       }, true);
+      // Capture Chrome Android beforeinstallprompt early before React hydrates
+      window.__deferredPWAInstallPrompt = null;
+      window.addEventListener('beforeinstallprompt', function(e) {
+        e.preventDefault();
+        window.__deferredPWAInstallPrompt = e;
+        window.dispatchEvent(new CustomEvent('sysjeger:pwa-installable'));
+      });
     </script>
   </head>
   <body>

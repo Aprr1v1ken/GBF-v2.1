@@ -189,11 +189,6 @@ export const BroadcastWartaModal: React.FC<BroadcastWartaModalProps> = ({
     return getWhatsAppShareUrl(messageText, targetPhone);
   }, [messageText, targetPhone]);
 
-  const handleSendWhatsApp = () => {
-    if (!messageText.trim()) return;
-    window.open(whatsappUrl, '_blank', 'noopener,noreferrer');
-  };
-
   const audienceOptions = [
     'Seluruh Warga Jemaat & Rayon I - IV',
     'Presbiter & Majelis Jemaat',

@@ -450,15 +450,11 @@ export const OnlineServiceFormsModal: React.FC<OnlineServiceFormsModalProps> = (
   };
 
   // 6. Share Form Link to WhatsApp
-  const handleShareFormWhatsApp = (type: 'baptis' | 'nikah') => {
+  const getFormWhatsAppShareHref = (type: 'baptis' | 'nikah'): string | null => {
     const meta = googleForms[type];
-    if (!meta || !meta.responderUri) {
-      showToast('Formulir Google belum dibuat.', 'error');
-      return;
-    }
+    if (!meta || !meta.responderUri) return null;
     const text = `*GMIT BETEL FUIMELANG · KLASIS ALOR TENGAH UTARA*\n━━━━━━━━━━━━━━━━━━━━━━━━━\n📋 *PENDAFTARAN ${type === 'baptis' ? 'SAKRAMEN BAPTISAN KUDUS' : 'PEMBERKATAN NIKAH KUDUS'} ONLINE*\n\nShalom Bapak/Ibu/Saudara-i warga jemaat,\nBagi anggota jemaat yang berkerinduan mendaftarkan ${type === 'baptis' ? 'anak untuk dibaptis' : 'pemberkatan pernikahan gerejawi'}, silakan mengisi formulir resmi secara mandiri melalui tautan Google Form berikut:\n\n🔗 *Link Pendaftaran:* ${meta.responderUri}\n\nSetelah mengisi, data Anda akan langsung masuk ke Sekretariat Majelis Jemaat untuk verifikasi pastoral.\n\nTuhan Yesus Memberkati Kita Sekalian. 🙏`;
-    const waUrl = getWhatsAppShareUrl(text);
-    window.open(waUrl, '_blank', 'noopener,noreferrer');
+    return getWhatsAppShareUrl(text);
   };
 
   return (
@@ -842,14 +838,21 @@ export const OnlineServiceFormsModal: React.FC<OnlineServiceFormsModalProps> = (
                           <span>Salin Link</span>
                         </button>
 
-                        <button
-                          type="button"
-                          onClick={() => handleShareFormWhatsApp('baptis')}
+                        <a
+                          href={getFormWhatsAppShareHref('baptis') || '#'}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => {
+                            if (!getFormWhatsAppShareHref('baptis')) {
+                              e.preventDefault();
+                              showToast('Formulir Google belum dibuat.', 'error');
+                            }
+                          }}
                           className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1 cursor-pointer shadow-sm"
                         >
                           <Share2 className="w-3.5 h-3.5" />
                           <span>Bagikan ke WhatsApp</span>
-                        </button>
+                        </a>
 
                         <button
                           type="button"
@@ -1115,14 +1118,21 @@ export const OnlineServiceFormsModal: React.FC<OnlineServiceFormsModalProps> = (
                           <span>Salin Link</span>
                         </button>
 
-                        <button
-                          type="button"
-                          onClick={() => handleShareFormWhatsApp('nikah')}
+                        <a
+                          href={getFormWhatsAppShareHref('nikah') || '#'}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => {
+                            if (!getFormWhatsAppShareHref('nikah')) {
+                              e.preventDefault();
+                              showToast('Formulir Google belum dibuat.', 'error');
+                            }
+                          }}
                           className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1 cursor-pointer shadow-sm"
                         >
                           <Share2 className="w-3.5 h-3.5" />
                           <span>Bagikan ke WhatsApp</span>
-                        </button>
+                        </a>
 
                         <button
                           type="button"

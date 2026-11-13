@@ -26,6 +26,7 @@ import { toCanvas } from 'html-to-image';
 import type { FinancialTransaction, Member, Rayon, ChurchSettings } from '../types/index.ts';
 import { OfficialLetterhead } from './OfficialLetterhead.tsx';
 import { DEFAULT_CHURCH_SETTINGS } from '../utils/church-settings.ts';
+import { getWhatsAppShareUrl } from '../utils/whatsapp-warta.ts';
 import { getWorkspaceAccessToken, createGoogleDoc } from '../services/workspace.ts';
 
 interface WartaPdfModalProps {
@@ -229,13 +230,6 @@ export const WartaPdfModal: React.FC<WartaPdfModalProps> = ({
     navigator.clipboard.writeText(text);
     setCopiedWa(true);
     setTimeout(() => setCopiedWa(false), 2500);
-  };
-
-  const handleOpenWhatsAppShare = () => {
-    const text = generateWhatsAppMessage();
-    const encoded = encodeURIComponent(text);
-    const url = `https://api.whatsapp.com/send?text=${encoded}`;
-    window.open(url, '_blank');
   };
 
   const handleExportWartaToGoogleDoc = async () => {
@@ -775,13 +769,15 @@ export const WartaPdfModal: React.FC<WartaPdfModalProps> = ({
 
               {/* Action Buttons */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <button
-                  onClick={handleOpenWhatsAppShare}
+                <a
+                  href={getWhatsAppShareUrl(generateWhatsAppMessage())}
+                  target="_blank"
+                  rel="noopener noreferrer"
                   className="p-4 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-2.5 shadow-xl shadow-emerald-950/50 transition cursor-pointer"
                 >
                   <MessageCircle className="w-5 h-5" />
                   <span>Buka WhatsApp Web / Aplikasi (Kirim Otomatis)</span>
-                </button>
+                </a>
 
                 <button
                   onClick={handleCopyWhatsApp}

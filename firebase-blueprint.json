@@ -144,9 +144,69 @@
         "created_at": { "type": "string" }
       },
       "required": ["service_type", "applicant_name", "details_json"]
+    },
+    "Event": {
+      "title": "Event",
+      "description": "Church event, fellowship activity, or special worship agenda",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "maxLength": 256 },
+        "date": { "type": "string", "maxLength": 32 },
+        "startTime": { "type": "string", "maxLength": 16 },
+        "endTime": { "type": "string", "maxLength": 16 },
+        "location": { "type": "string", "maxLength": 256 },
+        "category": { "type": "string", "maxLength": 64 },
+        "description": { "type": "string", "maxLength": 4096 },
+        "coordinator": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["title", "date", "category"]
+    },
+    "ActivityImage": {
+      "title": "ActivityImage",
+      "description": "Church service and Friday fellowship documentation photo metadata",
+      "type": "object",
+      "properties": {
+        "url": { "type": "string", "maxLength": 1500000 },
+        "title": { "type": "string", "maxLength": 256 },
+        "category": { "type": "string", "maxLength": 64 },
+        "description": { "type": "string", "maxLength": 1024 },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["url", "title", "category"]
+    },
+    "ChurchStaff": {
+      "title": "ChurchStaff",
+      "description": "Pastor, elder, deacon, and parish leadership roster record",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "maxLength": 128 },
+        "role": { "type": "string", "maxLength": 128 },
+        "period": { "type": "string", "maxLength": 64 },
+        "phone": { "type": "string", "maxLength": 32 },
+        "rayonName": { "type": "string", "maxLength": 128 },
+        "status": { "type": "string", "enum": ["Aktif", "Nonaktif"] }
+      },
+      "required": ["name", "role"]
+    },
+    "Admin": {
+      "title": "Admin",
+      "description": "Authorized Firestore administrator mapping document",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string", "format": "email", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 128 },
+        "role": { "type": "string", "maxLength": 64 },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["email", "role"]
     }
   },
   "firestore": {
+    "/admins/{adminId}": {
+      "schema": { "$ref": "#/entities/Admin" },
+      "description": "Verified administrator access control entries"
+    },
     "/users/{userId}": {
       "schema": { "$ref": "#/entities/User" },
       "description": "Registered system users and church staff access accounts"
@@ -159,6 +219,10 @@
       "schema": { "$ref": "#/entities/Family" },
       "description": "Church family households"
     },
+    "/church_staff/{staffId}": {
+      "schema": { "$ref": "#/entities/ChurchStaff" },
+      "description": "Church ministers, elders, and deacons records"
+    },
     "/announcements/{announcementId}": {
       "schema": { "$ref": "#/entities/Announcement" },
       "description": "Weekly church announcements and bulletin articles"
@@ -166,6 +230,14 @@
     "/schedules/{scheduleId}": {
       "schema": { "$ref": "#/entities/Schedule" },
       "description": "Sunday and weekly service duty rosters"
+    },
+    "/events/{eventId}": {
+      "schema": { "$ref": "#/entities/Event" },
+      "description": "Church calendar events and fellowship agendas"
+    },
+    "/activity_images/{imageId}": {
+      "schema": { "$ref": "#/entities/ActivityImage" },
+      "description": "Church activity documentation image gallery"
     },
     "/financial_transactions/{txId}": {
       "schema": { "$ref": "#/entities/FinancialTransaction" },

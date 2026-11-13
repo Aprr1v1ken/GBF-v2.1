@@ -58,6 +58,7 @@ import {
   deleteActivityImageFromCloud,
   type CloudActivityImage,
 } from '../../services/cloud-sync.ts';
+import { getWhatsAppShareUrl } from '../../utils/whatsapp-warta.ts';
 
 interface AIAssistantViewProps {
   members: Member[];
@@ -268,12 +269,6 @@ export const AIAssistantView: React.FC<AIAssistantViewProps> = ({
     navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2500);
-  };
-
-  const shareToWhatsApp = (text: string) => {
-    if (!text) return;
-    const url = `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
-    window.open(url, '_blank');
   };
 
   // 11. Generate Church News & Agenda Kegiatan Gereja (Gemini AI)
@@ -1365,13 +1360,15 @@ export const AIAssistantView: React.FC<AIAssistantViewProps> = ({
                     </button>
 
                     {/* Action 4: Share ke WhatsApp */}
-                    <button
-                      onClick={() => shareToWhatsApp(newsResult)}
+                    <a
+                      href={getWhatsAppShareUrl(newsResult)}
+                      target="_blank"
+                      rel="noopener noreferrer"
                       className="px-2.5 py-1.5 rounded-lg bg-emerald-950/60 hover:bg-emerald-900/60 text-emerald-300 border border-emerald-500/30 text-xs font-medium flex items-center gap-1 transition cursor-pointer"
                     >
                       <Share2 className="w-3.5 h-3.5" />
                       <span>WA</span>
-                    </button>
+                    </a>
 
                     {/* Action 5: Cetak Naskah */}
                     <button
@@ -1585,13 +1582,15 @@ export const AIAssistantView: React.FC<AIAssistantViewProps> = ({
                         {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-slate-400" />}
                         <span>{copied ? 'Tersalin' : 'Salin'}</span>
                       </button>
-                      <button
-                        onClick={() => shareToWhatsApp(counselingResult)}
+                      <a
+                        href={getWhatsAppShareUrl(counselingResult)}
+                        target="_blank"
+                        rel="noopener noreferrer"
                         className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-medium flex items-center gap-1 transition cursor-pointer"
                       >
                         <Share2 className="w-3.5 h-3.5" />
                         <span>Kirim WA</span>
-                      </button>
+                      </a>
                     </div>
                   )}
                 </div>
@@ -1728,13 +1727,15 @@ export const AIAssistantView: React.FC<AIAssistantViewProps> = ({
                         {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-slate-400" />}
                         <span>{copied ? 'Tersalin' : 'Salin'}</span>
                       </button>
-                      <button
-                        onClick={() => shareToWhatsApp(devotionalResult)}
+                      <a
+                        href={getWhatsAppShareUrl(devotionalResult)}
+                        target="_blank"
+                        rel="noopener noreferrer"
                         className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-medium flex items-center gap-1 transition cursor-pointer"
                       >
                         <Share2 className="w-3.5 h-3.5" />
                         <span>Kirim WA Rayon</span>
-                      </button>
+                      </a>
                     </div>
                   )}
                 </div>
@@ -2010,13 +2011,15 @@ export const AIAssistantView: React.FC<AIAssistantViewProps> = ({
                         {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-slate-400" />}
                         <span>{copied ? 'Tersalin' : 'Salin'}</span>
                       </button>
-                      <button
-                        onClick={() => shareToWhatsApp(sundaySchoolResult)}
+                      <a
+                        href={getWhatsAppShareUrl(sundaySchoolResult)}
+                        target="_blank"
+                        rel="noopener noreferrer"
                         className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-medium flex items-center gap-1 transition cursor-pointer"
                       >
                         <Share2 className="w-3.5 h-3.5" />
                         <span>Kirim ke Pengasuh</span>
-                      </button>
+                      </a>
                     </div>
                   )}
                 </div>
@@ -2154,13 +2157,15 @@ export const AIAssistantView: React.FC<AIAssistantViewProps> = ({
                         {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-slate-400" />}
                         <span>{copied ? 'Tersalin' : 'Salin'}</span>
                       </button>
-                      <button
-                        onClick={() => shareToWhatsApp(paResult)}
+                      <a
+                        href={getWhatsAppShareUrl(paResult)}
+                        target="_blank"
+                        rel="noopener noreferrer"
                         className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-medium flex items-center gap-1 transition cursor-pointer"
                       >
                         <Share2 className="w-3.5 h-3.5" />
                         <span>Kirim WA Rayon</span>
-                      </button>
+                      </a>
                     </div>
                   )}
                 </div>
@@ -2514,13 +2519,15 @@ export const AIAssistantView: React.FC<AIAssistantViewProps> = ({
                         {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-slate-400" />}
                         <span>{copied ? 'Tersalin' : 'Salin Teks'}</span>
                       </button>
-                      <button
-                        onClick={() => shareToWhatsApp(prayerResult)}
+                      <a
+                        href={getWhatsAppShareUrl(prayerResult)}
+                        target="_blank"
+                        rel="noopener noreferrer"
                         className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-medium flex items-center gap-1 transition cursor-pointer"
                       >
                         <Share2 className="w-3.5 h-3.5" />
                         <span>Kirim WA</span>
-                      </button>
+                      </a>
                     </div>
                   )}
                 </div>

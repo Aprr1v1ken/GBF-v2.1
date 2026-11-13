@@ -1,7 +1,7 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Deny every collection that is not explicitly listed below.
+    // Default deny safety net for every collection not explicitly matched below.
     match /{document=**} {
       allow read, write: if false;
     }
@@ -10,70 +10,110 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function isVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
     function isAdmin() {
-      return isSignedIn() && (
+      return isVerified() && (
         request.auth.token.email == 'aprryviken@gmail.com' ||
         exists(/databases/$(database)/documents/admins/$(request.auth.uid))
       );
     }
 
     function validId(id) {
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
     }
 
     match /admins/{adminId} {
       allow read: if isAdmin();
-      allow write: if isAdmin() && validId(adminId);
+      allow create, update: if isAdmin() && validId(adminId)
+        && incoming().keys().hasOnly(['email', 'name', 'role', 'createdAt', 'updatedAt']);
+      allow delete: if isAdmin() && validId(adminId);
     }
 
-    // A lightweight connectivity probe contains no church data.
+    // Lightweight connectivity probe (single-doc get only for signed-in sessions).
     match /test/connection {
-      allow read: if true;
+      allow get: if isSignedIn();
     }
 
-    // Public warta, agendas, and documentation may be read by visitors, but
-    // only an authenticated church administrator can publish or alter them.
+    // Church bulletins, worship schedules, events, and documented activity photos:
+    // readable by signed-in users, writable only by verified church admins.
     match /announcements/{announcementId} {
-      allow read: if true;
-      allow write: if isAdmin() && validId(announcementId);
+      allow read: if isSignedIn();
+      allow create, update: if isAdmin() && validId(announcementId)
+        && incoming().id is string && incoming().id.size() <= 128;
+      allow delete: if isAdmin() && validId(announcementId);
     }
+
     match /schedules/{scheduleId} {
-      allow read: if true;
-      allow write: if isAdmin() && validId(scheduleId);
+      allow read: if isSignedIn();
+      allow create, update: if isAdmin() && validId(scheduleId)
+        && incoming().id is string && incoming().id.size() <= 128;
+      allow delete: if isAdmin() && validId(scheduleId);
     }
+
     match /events/{eventId} {
-      allow read: if true;
-      allow write: if isAdmin() && validId(eventId);
+      allow read: if isSignedIn();
+      allow create, update: if isAdmin() && validId(eventId)
+        && incoming().id is string && incoming().id.size() <= 128;
+      allow delete: if isAdmin() && validId(eventId);
     }
+
     match /activity_images/{imageId} {
-      allow read: if true;
+      allow read: if isSignedIn();
       allow create, update: if isAdmin() && validId(imageId)
-        && request.resource.data.url is string
-        && request.resource.data.url.size() <= 1500000;
+        && incoming().url is string
+        && incoming().url.size() <= 1500000;
       allow delete: if isAdmin() && validId(imageId);
     }
 
-    // Membership, contact, family, staff, and financial records are private.
+    // Membership, contact, family, staff, and financial records contain PII and treasury data.
     match /church_staff/{staffId} {
-      allow read, write: if isAdmin() && validId(staffId);
+      allow read: if isAdmin() && validId(staffId);
+      allow create, update: if isAdmin() && validId(staffId)
+        && incoming().id is string && incoming().id.size() <= 128;
+      allow delete: if isAdmin() && validId(staffId);
     }
+
     match /members/{memberId} {
-      allow read, write: if isAdmin() && validId(memberId);
+      allow read: if isAdmin() && validId(memberId);
+      allow create, update: if isAdmin() && validId(memberId)
+        && incoming().id is string && incoming().id.size() <= 128;
+      allow delete: if isAdmin() && validId(memberId);
     }
+
     match /families/{familyId} {
-      allow read, write: if isAdmin() && validId(familyId);
+      allow read: if isAdmin() && validId(familyId);
+      allow create, update: if isAdmin() && validId(familyId)
+        && incoming().id is string && incoming().id.size() <= 128;
+      allow delete: if isAdmin() && validId(familyId);
     }
+
     match /financial_transactions/{txId} {
-      allow read, write: if isAdmin() && validId(txId);
+      allow read: if isAdmin() && validId(txId);
+      allow create, update: if isAdmin() && validId(txId)
+        && incoming().id is string && incoming().id.size() <= 128;
+      allow delete: if isAdmin() && validId(txId);
     }
+
     match /service_registrations/{registrationId} {
       allow create: if validId(registrationId)
-        && request.resource.data.applicant_name is string
-        && request.resource.data.applicant_name.size() <= 128
-        && request.resource.data.service_type is string
-        && request.resource.data.service_type.size() <= 32;
+        && incoming().keys().hasAll(['service_type', 'applicant_name', 'details_json'])
+        && incoming().keys().hasOnly(['service_type', 'applicant_name', 'applicant_phone', 'details_json', 'status', 'admin_notes', 'created_at'])
+        && incoming().applicant_name is string
+        && incoming().applicant_name.size() > 0 && incoming().applicant_name.size() <= 128
+        && incoming().service_type is string
+        && incoming().service_type in ['baptis', 'nikah', 'sidi']
+        && incoming().details_json is string
+        && incoming().details_json.size() <= 8192;
       allow read, update, delete: if isAdmin() && validId(registrationId);
     }
+
     match /users/{userId} {
       allow read, write: if false;
     }

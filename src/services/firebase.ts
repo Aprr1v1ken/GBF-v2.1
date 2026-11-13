@@ -1,11 +1,13 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider } from 'firebase/auth';
+import { getAuth, GoogleAuthProvider, onAuthStateChanged } from 'firebase/auth';
 import {
   initializeFirestore,
   persistentLocalCache,
   persistentMultipleTabManager,
   doc,
   getDocFromServer,
+  disableNetwork,
+  enableNetwork,
   type Firestore,
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
@@ -20,7 +22,7 @@ function createFirestoreInstance(): Firestore {
     return initializeFirestore(
       app,
       {
-        experimentalForceLongPolling: true,
+        experimentalAutoDetectLongPolling: true,
         localCache: persistentLocalCache({
           tabManager: persistentMultipleTabManager(),
         }),
@@ -33,7 +35,7 @@ function createFirestoreInstance(): Firestore {
     return initializeFirestore(
       app,
       {
-        experimentalForceLongPolling: true,
+        experimentalAutoDetectLongPolling: true,
       },
       FIRESTORE_DATABASE_ID
     );
@@ -91,20 +93,123 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   throw new Error(JSON.stringify(errInfo));
 }
 
-// Connectivity test constraint as required by Firebase skill
-async function testConnection() {
-  if (typeof window === 'undefined') return;
+let networkPausedForOffline = false;
+let connectivityCheckPromise: Promise<boolean> | null = null;
+
+async function canReachFirestoreEndpoint(timeoutMs = 3500): Promise<boolean> {
+  if (typeof window === 'undefined' || !navigator.onLine) return false;
+  if (!firebaseConfig.projectId || !firebaseConfig.apiKey || !auth.currentUser) return false;
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    if (navigator.onLine) {
-      const probePromise = getDocFromServer(doc(db, 'test', 'connection'));
-      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 4000));
-      await Promise.race([probePromise, timeoutPromise]);
-    }
-  } catch (error) {
-    if (error instanceof Error && !error.message.includes('timeout') && error.message.includes('the client is offline')) {
-      console.warn('Firestore offline: client will sync when online.');
-    }
+    const idToken = await auth.currentUser.getIdToken();
+    const docName = `projects/${firebaseConfig.projectId}/databases/${FIRESTORE_DATABASE_ID}/documents/test/connection`;
+    const probeUrl = `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(firebaseConfig.projectId)}/databases/${encodeURIComponent(FIRESTORE_DATABASE_ID)}/documents:batchGet?key=${encodeURIComponent(firebaseConfig.apiKey)}`;
+    const response = await fetch(probeUrl, {
+      method: 'POST',
+      cache: 'no-store',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${idToken}`,
+      },
+      body: JSON.stringify({ documents: [docName] }),
+      signal: controller.signal,
+    });
+    // HTTP 200 (found or missing doc marker) confirms live authenticated backend reachability.
+    return response.status > 0 && response.status < 400;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
   }
 }
 
-testConnection();
+async function pauseFirestoreNetworkSafely(): Promise<void> {
+  if (networkPausedForOffline) return;
+  networkPausedForOffline = true;
+  try {
+    await disableNetwork(db);
+  } catch {
+    // Ignore shutdown/persistence edge errors
+  }
+}
+
+export async function ensureFirestoreNetworkReady(): Promise<boolean> {
+  if (typeof window === 'undefined' || !navigator.onLine) {
+    await pauseFirestoreNetworkSafely();
+    return false;
+  }
+  const reachable = await canReachFirestoreEndpoint(3500);
+  if (!reachable) {
+    await pauseFirestoreNetworkSafely();
+    return false;
+  }
+  if (networkPausedForOffline) {
+    networkPausedForOffline = false;
+    try {
+      await enableNetwork(db);
+    } catch {
+      return false;
+    }
+  }
+  return true;
+}
+
+// Connectivity test constraint as required by Firebase skill, guarded so slow/offline
+// links switch cleanly to local cache before Firestore's 10-second stream error fires.
+async function testConnection(): Promise<boolean> {
+  if (typeof window === 'undefined') return false;
+  if (connectivityCheckPromise) return connectivityCheckPromise;
+
+  connectivityCheckPromise = (async () => {
+    try {
+      const ready = await ensureFirestoreNetworkReady();
+      if (!ready) return false;
+
+      let watchdogFired = false;
+      const watchdogTimer = setTimeout(() => {
+        watchdogFired = true;
+        void pauseFirestoreNetworkSafely();
+      }, 6500);
+
+      try {
+        await getDocFromServer(doc(db, 'test', 'connection'));
+        clearTimeout(watchdogTimer);
+        return !watchdogFired;
+      } catch (error) {
+        clearTimeout(watchdogTimer);
+        if (
+          error instanceof Error &&
+          (error.message.includes('the client is offline') ||
+            error.message.includes('network') ||
+            error.message.includes('unavailable'))
+        ) {
+          await pauseFirestoreNetworkSafely();
+        }
+        return false;
+      }
+    } finally {
+      connectivityCheckPromise = null;
+    }
+  })();
+
+  return connectivityCheckPromise;
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('online', () => {
+    if (auth.currentUser) void testConnection();
+  });
+  window.addEventListener('offline', () => {
+    void pauseFirestoreNetworkSafely();
+  });
+  onAuthStateChanged(auth, (user) => {
+    if (user) {
+      void testConnection();
+    } else {
+      void pauseFirestoreNetworkSafely();
+    }
+  });
+}
+

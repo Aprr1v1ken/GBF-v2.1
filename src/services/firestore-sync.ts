@@ -6,7 +6,7 @@ import {
   deleteDoc,
   writeBatch,
 } from 'firebase/firestore';
-import { auth, db } from './firebase.ts';
+import { auth, db, ensureFirestoreNetworkReady } from './firebase.ts';
 
 export type FirestoreSyncCollection =
   | 'members'
@@ -28,7 +28,7 @@ export function sanitizeFirestoreDocId(rawId: string): string {
 }
 
 export function isFirestoreSyncReady(): boolean {
-  return Boolean(typeof window !== 'undefined' && auth.currentUser);
+  return Boolean(typeof window !== 'undefined' && navigator.onLine && auth.currentUser);
 }
 
 function stripUndefinedFields(obj: Record<string, any>): Record<string, any> {
@@ -45,6 +45,7 @@ export async function mirrorDocToFirestore(
   payload: Record<string, any>
 ): Promise<boolean> {
   if (!isFirestoreSyncReady()) return false;
+  if (!(await ensureFirestoreNetworkReady())) return false;
   const docId = sanitizeFirestoreDocId(id);
   if (!VALID_ID_REGEX.test(docId)) return false;
 
@@ -70,6 +71,7 @@ export async function removeDocFromFirestore(
   id: string
 ): Promise<boolean> {
   if (!isFirestoreSyncReady()) return false;
+  if (!(await ensureFirestoreNetworkReady())) return false;
   const docId = sanitizeFirestoreDocId(id);
   if (!VALID_ID_REGEX.test(docId)) return false;
 
@@ -86,6 +88,7 @@ export async function pullCollectionFromFirestore<T = any>(
   collectionName: FirestoreSyncCollection
 ): Promise<T[]> {
   if (!isFirestoreSyncReady()) return [];
+  if (!(await ensureFirestoreNetworkReady())) return [];
   try {
     const snap = await getDocs(collection(db, collectionName));
     return snap.docs.map((d) => ({ id: d.id, ...(d.data() as Record<string, any>) })) as T[];
@@ -100,6 +103,7 @@ export async function syncRecordsToFirestoreBatch(
   records: Array<Record<string, any> & { id?: string }>
 ): Promise<number> {
   if (!isFirestoreSyncReady() || records.length === 0) return 0;
+  if (!(await ensureFirestoreNetworkReady())) return 0;
 
   let synced = 0;
   const CHUNK_SIZE = 350;

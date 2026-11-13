@@ -28,6 +28,7 @@ import { usePWAInstall } from '../../hooks/usePWAInstall.ts';
 import type { ChurchSettings, Member, Rayon, User } from '../../types/index.ts';
 import { UserManagement } from '../UserManagement.tsx';
 import { ChurchLetterheadForm } from '../ChurchLetterheadForm.tsx';
+import { AndroidInstallModal } from '../AndroidInstallModal.tsx';
 import {
   isWebAuthnSupported,
   isPlatformBiometricAvailable,
@@ -698,72 +699,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         </div>
       </div>
 
-      {/* INSTALL INSTRUCTIONS MODAL (FOR ANDROID & IOS SAFARI) */}
-      {showIOSModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150">
-          <div className="w-full max-w-lg bg-[#0b1226] border border-amber-500/30 rounded-3xl shadow-2xl p-6 sm:p-8 space-y-5 text-slate-100">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <div className="flex items-center gap-2">
-                <Smartphone className="w-5 h-5 text-amber-400" />
-                <h3 className="text-base font-bold text-white">
-                  Panduan Pasang Aplikasi ke Layar Utama HP
-                </h3>
-              </div>
-              <button
-                onClick={() => setShowIOSModal(false)}
-                className="text-slate-400 hover:text-white text-xs px-2 py-1 rounded-md hover:bg-slate-800"
-              >
-                ✕ Tutup
-              </button>
-            </div>
-
-            <div className="space-y-4 text-xs">
-              {/* Android Instructions */}
-              <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-2">
-                <div className="font-bold text-amber-400 flex items-center gap-1.5 text-sm">
-                  <span>📱 Pengguna Android (Google Chrome / Edge / Samsung Internet):</span>
-                </div>
-                <ol className="list-decimal list-inside space-y-1.5 text-slate-300 leading-relaxed pl-1">
-                  <li>Buka browser dan buka situs aplikasi GMIT Betel Fuimelang.</li>
-                  <li>
-                    Ketuk tombol menu <strong>Titik Tiga (⋮)</strong> di pojok kanan atas browser.
-                  </li>
-                  <li>
-                    Pilih menu <strong>"Instal Aplikasi"</strong> atau <strong>"Tambahkan ke Layar Utama" (Add to Home screen)</strong>.
-                  </li>
-                  <li>Ketuk <strong>Instal</strong>. Ikon SYSJEGER akan otomatis muncul di menu aplikasi HP Anda.</li>
-                </ol>
-              </div>
-
-              {/* iOS Safari Instructions */}
-              <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-2">
-                <div className="font-bold text-amber-400 flex items-center gap-1.5 text-sm">
-                  <span>🍏 Pengguna iPhone / iPad (Safari):</span>
-                </div>
-                <ol className="list-decimal list-inside space-y-1.5 text-slate-300 leading-relaxed pl-1">
-                  <li>Buka halaman web ini di peramban <strong>Safari</strong> bawaan iPhone.</li>
-                  <li>
-                    Ketuk tombol <strong>Bagikan / Share</strong> (ikon kotak dengan panah ke atas <Share2 className="w-3.5 h-3.5 inline text-sky-400" /> di bilah bawah).
-                  </li>
-                  <li>
-                    Gulir ke bawah dan ketuk opsi <strong>"Tambah ke Layar Utama" (Add to Home Screen)</strong> <PlusSquare className="w-3.5 h-3.5 inline text-amber-400" />.
-                  </li>
-                  <li>
-                    Ketuk <strong>Tambah (Add)</strong> di pojok kanan atas. Aplikasi siap digunakan di iPhone Anda.
-                  </li>
-                </ol>
-              </div>
-            </div>
-
-            <button
-              onClick={() => setShowIOSModal(false)}
-              className="w-full py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-md cursor-pointer transition-colors"
-            >
-              Saya Mengerti, Tutup Panduan
-            </button>
-          </div>
-        </div>
-      )}
+      {/* UNIFIED DIRECT ANDROID / QR / APK INSTALL MODAL */}
+      <AndroidInstallModal
+        isOpen={showIOSModal}
+        onClose={() => setShowIOSModal(false)}
+      />
     </div>
   );
 };

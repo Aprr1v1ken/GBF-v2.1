@@ -48,6 +48,7 @@ const VIEW_TITLES: Record<string, string> = {
   attendance: 'Pencatatan Absensi Kebaktian',
   finance: 'Administrasi Kas Keuangan Gereja',
   announcements: 'Penerbitan Warta Jemaat',
+  'warta-digital': 'Warta Digital & Share WhatsApp',
   documents: 'Arsip & Dokumen Digital Gereja',
   reports: 'Pusat Laporan & Format Cetak Resmi A4',
   portal: 'Portal Pelayanan Khusus Warga Jemaat',

@@ -209,6 +209,18 @@ export async function parseMutationResponse<T = any>(res: Response, fallbackMess
   return data as T;
 }
 
+async function safeResponseJson<T = any>(res: Response, fallbackMessage = 'Respons server tidak valid'): Promise<T> {
+  const contentType = res.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    return { success: false, message: fallbackMessage } as unknown as T;
+  }
+  const parsed = await res.json().catch(() => null);
+  if (!parsed) {
+    return { success: false, message: fallbackMessage } as unknown as T;
+  }
+  return parsed as T;
+}
+
 export async function loginApi(username: string, password: string): Promise<{ success: boolean; user?: User; token?: string; message?: string }> {
   const cleanUsername = String(username || '').trim().toLowerCase();
   const cleanPassword = String(password || '');
@@ -318,7 +330,7 @@ export async function fetchSessionApi(): Promise<{ success: boolean; user?: User
 
 export async function webAuthnRegistrationOptionsApi() {
   const res = await apiFetch(`${API_BASE}/auth/webauthn/register-options`, { method: 'POST' });
-  return res.json();
+  return safeResponseJson(res, 'Gagal memuat opsi pendaftaran biometrik.');
 }
 
 export async function webAuthnRegisterApi(response: unknown, challengeToken: string) {
@@ -327,12 +339,12 @@ export async function webAuthnRegisterApi(response: unknown, challengeToken: str
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ response, challengeToken }),
   });
-  return res.json();
+  return safeResponseJson(res, 'Gagal mendaftarkan kredensial biometrik.');
 }
 
 export async function webAuthnDeleteCredentialApi(credentialId: string) {
   const res = await apiFetch(`${API_BASE}/auth/webauthn/credentials/${encodeURIComponent(credentialId)}`, { method: 'DELETE' });
-  return res.json();
+  return safeResponseJson(res, 'Gagal menghapus kredensial biometrik.');
 }
 
 export async function webAuthnAuthenticationOptionsApi(username: string) {
@@ -341,7 +353,7 @@ export async function webAuthnAuthenticationOptionsApi(username: string) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username }),
   });
-  return res.json();
+  return safeResponseJson(res, 'Gagal memuat opsi login biometrik.');
 }
 
 export async function webAuthnAuthenticateApi(username: string, response: unknown, challengeToken: string) {
@@ -350,7 +362,7 @@ export async function webAuthnAuthenticateApi(username: string, response: unknow
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username, response, challengeToken }),
   });
-  return res.json();
+  return safeResponseJson(res, 'Verifikasi login biometrik gagal.');
 }
 
 export async function fetchStatsApi() {
@@ -478,7 +490,7 @@ export async function createStaffApi(data: Partial<ChurchStaff>) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
-  return res.json();
+  return parseMutationResponse(res, 'Gagal menyimpan data pelayan gereja');
 }
 
 export async function updateStaffApi(id: string, data: Partial<ChurchStaff>) {
@@ -487,17 +499,17 @@ export async function updateStaffApi(id: string, data: Partial<ChurchStaff>) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
-  return res.json();
+  return parseMutationResponse(res, 'Gagal memperbarui data pelayan gereja');
 }
 
 export async function deleteStaffApi(id: string) {
   const res = await apiFetch(`${API_BASE}/staff/${id}`, { method: 'DELETE' });
-  return res.json();
+  return parseMutationResponse(res, 'Gagal menghapus data pelayan gereja');
 }
 
 export async function clearAllStaffApi() {
   const res = await apiFetch(`${API_BASE}/staff`, { method: 'DELETE' });
-  return res.json();
+  return parseMutationResponse(res, 'Gagal membersihkan daftar pelayan gereja');
 }
 
 export async function fetchSacramentsApi() {
@@ -719,13 +731,21 @@ export async function importMembersApi(members: Partial<Member>[]) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ members }),
   });
-  return res.json();
+  return safeResponseJson(res, 'Gagal mengimpor data jemaat dari server.');
 }
 
 // AI Pastoral & Gerejawi Services
 export async function fetchAiStatusApi() {
-  const res = await apiFetch(`${API_BASE}/ai/status`);
-  return res.json() as Promise<{ success: boolean; configured: boolean; provider: 'gemini' | 'local-draft'; model: string | null }>;
+  try {
+    const res = await apiFetch(`${API_BASE}/ai/status`);
+    const contentType = res.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      return { success: true, configured: false, provider: 'local-draft' as const, model: null };
+    }
+    return await res.json() as { success: boolean; configured: boolean; provider: 'gemini' | 'local-draft'; model: string | null };
+  } catch {
+    return { success: true, configured: false, provider: 'local-draft' as const, model: null };
+  }
 }
 
 export async function generateSermonApi(data: {
@@ -740,7 +760,7 @@ export async function generateSermonApi(data: {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
-  return res.json();
+  return safeResponseJson(res, 'Gagal menghasilkan kerangka khotbah.');
 }
 
 export async function generateWartaApi(data: {
@@ -754,7 +774,7 @@ export async function generateWartaApi(data: {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
-  return res.json();
+  return safeResponseJson(res, 'Gagal menghasilkan warta jemaat.');
 }
 
 export async function generatePastoralPrayerApi(data: {
@@ -769,7 +789,7 @@ export async function generatePastoralPrayerApi(data: {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
-  return res.json();
+  return safeResponseJson(res, 'Gagal menghasilkan doa pastoral.');
 }
 
 export async function generateInsightsApi(data: {
@@ -780,7 +800,7 @@ export async function generateInsightsApi(data: {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
-  return res.json();
+  return safeResponseJson(res, 'Gagal menganalisis statistik gereja.');
 }
 
 export async function generateSpiritualCounselingApi(data: {
@@ -794,7 +814,7 @@ export async function generateSpiritualCounselingApi(data: {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
-  return res.json();
+  return safeResponseJson(res, 'Gagal memproses konseling rohani.');
 }
 
 export async function generateDailyDevotionalApi(data: {
@@ -808,7 +828,7 @@ export async function generateDailyDevotionalApi(data: {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
-  return res.json();
+  return safeResponseJson(res, 'Gagal menghasilkan renungan harian.');
 }
 
 export async function generateLiturgyOrderApi(data: {
@@ -822,7 +842,7 @@ export async function generateLiturgyOrderApi(data: {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
-  return res.json();
+  return safeResponseJson(res, 'Gagal menyusun tata ibadah.');
 }
 
 export async function generateSundaySchoolApi(data: {
@@ -835,7 +855,7 @@ export async function generateSundaySchoolApi(data: {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
-  return res.json();
+  return safeResponseJson(res, 'Gagal membuat bahan PAR/Sekolah Minggu.');
 }
 
 export async function generateBibleStudyApi(data: {
@@ -848,7 +868,7 @@ export async function generateBibleStudyApi(data: {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
-  return res.json();
+  return safeResponseJson(res, 'Gagal menyusun bahan pemahaman Alkitab.');
 }
 
 export async function generateChurchNewsApi(data: {
@@ -869,7 +889,7 @@ export async function generateChurchNewsApi(data: {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
-  return res.json();
+  return safeResponseJson(res, 'Gagal menghasilkan berita gereja.');
 }
 
 export async function deleteFinanceApi(id: string) {
@@ -896,7 +916,7 @@ export async function purgeSampleDataApi() {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
   });
-  return res.json();
+  return safeResponseJson(res, 'Gagal membersihkan data contoh.');
 }
 
 export async function clearAllMembersApi(): Promise<{ success: boolean; message: string }> {
@@ -914,7 +934,7 @@ export async function clearAllMembersApi(): Promise<{ success: boolean; message:
 // n8n WhatsApp Bot Gateway API functions
 export async function fetchN8nConfigApi() {
   const res = await apiFetch(`${API_BASE}/n8n/config`);
-  return res.json();
+  return safeResponseJson(res, 'Gagal memuat konfigurasi n8n.');
 }
 
 export async function updateN8nConfigApi(data: {
@@ -929,12 +949,12 @@ export async function updateN8nConfigApi(data: {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
-  return res.json();
+  return safeResponseJson(res, 'Gagal menyimpan konfigurasi n8n.');
 }
 
 export async function fetchN8nInboxApi() {
   const res = await apiFetch(`${API_BASE}/n8n/inbox`);
-  return res.json();
+  return safeResponseJson(res, 'Gagal memuat inbox n8n.');
 }
 
 export async function testN8nWebhookApi(webhookUrl?: string) {
@@ -943,7 +963,7 @@ export async function testN8nWebhookApi(webhookUrl?: string) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ webhookUrl }),
   });
-  return res.json();
+  return safeResponseJson(res, 'Gagal menguji webhook n8n.');
 }
 
 export async function testN8nMemberLookupApi(query: string, apiKey?: string) {
@@ -954,21 +974,21 @@ export async function testN8nMemberLookupApi(query: string, apiKey?: string) {
     headers,
     body: JSON.stringify({ query }),
   });
-  return res.json();
+  return safeResponseJson(res, 'Gagal menguji pencarian jemaat n8n.');
 }
 
 export async function testN8nLatestWartaApi(apiKey?: string) {
   const headers: Record<string, string> = {};
   if (apiKey) headers['X-N8N-API-KEY'] = apiKey;
   const res = await apiFetch(`${API_BASE}/n8n/warta/latest`, { headers });
-  return res.json();
+  return safeResponseJson(res, 'Gagal mengambil warta terbaru n8n.');
 }
 
 export async function testN8nSchedulesApi(apiKey?: string) {
   const headers: Record<string, string> = {};
   if (apiKey) headers['X-N8N-API-KEY'] = apiKey;
   const res = await apiFetch(`${API_BASE}/n8n/schedules/upcoming`, { headers });
-  return res.json();
+  return safeResponseJson(res, 'Gagal mengambil jadwal n8n.');
 }
 
 export async function testN8nSubmitPrayerApi(data: { senderPhone: string; senderName: string; messageText: string; messageType?: string }, apiKey?: string) {
@@ -979,7 +999,7 @@ export async function testN8nSubmitPrayerApi(data: { senderPhone: string; sender
     headers,
     body: JSON.stringify(data),
   });
-  return res.json();
+  return safeResponseJson(res, 'Gagal mengirim pesan uji n8n.');
 }
 
 // Online Service Registrations (Baptisan & Pernikahan via Google Forms API / Self-Service)
@@ -989,7 +1009,7 @@ export async function fetchServiceRegistrationsApi(params?: { type?: string; sta
   if (params?.status) query.set('status', params.status);
   const qs = query.toString() ? `?${query.toString()}` : '';
   const res = await apiFetch(`${API_BASE}/service-registrations${qs}`);
-  return res.json();
+  return safeResponseJson(res, 'Gagal memuat pendaftaran pelayanan online.');
 }
 
 export async function submitServiceRegistrationApi(data: {
@@ -1004,7 +1024,7 @@ export async function submitServiceRegistrationApi(data: {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
-  return res.json();
+  return safeResponseJson(res, 'Gagal mengirim formulir pendaftaran pelayanan.');
 }
 
 export async function updateServiceRegistrationStatusApi(id: string, status: string, adminNotes?: string) {
@@ -1013,12 +1033,12 @@ export async function updateServiceRegistrationStatusApi(id: string, status: str
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ status, adminNotes }),
   });
-  return res.json();
+  return safeResponseJson(res, 'Gagal memperbarui status pendaftaran pelayanan.');
 }
 
 export async function deleteServiceRegistrationApi(id: string) {
   const res = await apiFetch(`${API_BASE}/service-registrations/${id}`, { method: 'DELETE' });
-  return res.json();
+  return safeResponseJson(res, 'Gagal menghapus pendaftaran pelayanan.');
 }
 
 

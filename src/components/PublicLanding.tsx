@@ -35,6 +35,7 @@ import {
 import { usePWAInstall } from '../hooks/usePWAInstall.ts';
 import type { Announcement, ChurchEvent, ServiceSchedule, Member, Family, Rayon, CategorialGroup, User } from '../types/index.ts';
 import { OnlineServiceFormsModal } from './OnlineServiceFormsModal.tsx';
+import { AndroidInstallModal } from './AndroidInstallModal.tsx';
 
 interface PublicLandingProps {
   onEnterApp: () => void;
@@ -1019,72 +1020,11 @@ export const PublicLanding: React.FC<PublicLandingProps> = ({
         </p>
       </footer>
 
-      {/* Installation Guide Modal */}
-      {showInstallGuide && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150">
-          <div className="w-full max-w-lg bg-[#0b1226] border border-amber-500/30 rounded-3xl shadow-2xl p-6 sm:p-8 space-y-5 text-slate-100">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <div className="flex items-center gap-2">
-                <Smartphone className="w-5 h-5 text-amber-400" />
-                <h3 className="text-base font-bold text-white">
-                  Cara Pasang Aplikasi ke Layar Utama HP
-                </h3>
-              </div>
-              <button
-                onClick={() => setShowInstallGuide(false)}
-                className="text-slate-400 hover:text-white text-xs px-2 py-1 rounded-md hover:bg-slate-800"
-              >
-                ✕ Tutup
-              </button>
-            </div>
-
-            <div className="space-y-4 text-xs">
-              {/* Android Instructions */}
-              <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-2">
-                <div className="font-bold text-amber-400 flex items-center gap-1.5 text-sm">
-                  <span>📱 Pengguna Android (Chrome / Edge / Samsung Internet):</span>
-                </div>
-                <ol className="list-decimal list-inside space-y-1.5 text-slate-300 leading-relaxed pl-1">
-                  <li>Buka browser Google Chrome atau browser bawaan HP Anda.</li>
-                  <li>
-                    Ketuk menu <strong>Titik Tiga (⋮)</strong> di sudut kanan atas.
-                  </li>
-                  <li>
-                    Pilih <strong>"Instal Aplikasi"</strong> atau <strong>"Tambahkan ke Layar Utama" (Add to Home screen)</strong>.
-                  </li>
-                  <li>Ketuk <strong>Instal</strong> untuk memasang ikon GMIT Betel Fuimelang di HP.</li>
-                </ol>
-              </div>
-
-              {/* iOS Safari Instructions */}
-              <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-2">
-                <div className="font-bold text-amber-400 flex items-center gap-1.5 text-sm">
-                  <span>🍏 Pengguna iPhone / iPad (Safari):</span>
-                </div>
-                <ol className="list-decimal list-inside space-y-1.5 text-slate-300 leading-relaxed pl-1">
-                  <li>Buka halaman ini melalui browser <strong>Safari</strong> iPhone.</li>
-                  <li>
-                    Ketuk tombol <strong>Bagikan / Share</strong> (ikon kotak dengan panah ke atas <Share2 className="w-3.5 h-3.5 inline text-sky-400" />).
-                  </li>
-                  <li>
-                    Gulir ke bawah dan ketuk opsi <strong>"Tambah ke Layar Utama" (Add to Home Screen)</strong> <PlusSquare className="w-3.5 h-3.5 inline text-amber-400" />.
-                  </li>
-                  <li>
-                    Ketuk <strong>Tambah (Add)</strong> di pojok kanan atas layar iPhone.
-                  </li>
-                </ol>
-              </div>
-            </div>
-
-            <button
-              onClick={() => setShowInstallGuide(false)}
-              className="w-full py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-md cursor-pointer transition-colors"
-            >
-              Saya Mengerti, Tutup Panduan
-            </button>
-          </div>
-        </div>
-      )}
+      {/* Unified Direct Android / QR / APK Install Modal */}
+      <AndroidInstallModal
+        isOpen={showInstallGuide}
+        onClose={() => setShowInstallGuide(false)}
+      />
 
       {/* Modal Pelayanan Online (Baptisan & Nikah) */}
       <OnlineServiceFormsModal

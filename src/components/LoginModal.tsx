@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { googleLoginApi, loginApi, RESILIENT_ACCOUNTS } from '../services/api.ts';
 import { auth, googleProvider } from '../services/firebase.ts';
-import { signInWithPopup } from '@firebase/auth';
+import { signInWithPopup } from 'firebase/auth';
 import type { User as UserType } from '../types/index.ts';
 import {
   isWebAuthnSupported,

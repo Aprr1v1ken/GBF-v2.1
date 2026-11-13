@@ -3,7 +3,7 @@ import {
   signInWithPopup,
   onAuthStateChanged,
   type User,
-} from '@firebase/auth';
+} from 'firebase/auth';
 import { auth } from './firebase.ts';
 import type { Member, FinancialTransaction, Family } from '../types/index.ts';
 

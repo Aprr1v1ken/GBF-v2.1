@@ -16,6 +16,7 @@ import { ImportModal } from './components/ImportModal.tsx';
 import { PrintReportModal } from './components/PrintReportModal.tsx';
 import { KoboExportModal } from './components/KoboExportModal.tsx';
 import { OfflineIndicator } from './components/OfflineIndicator.tsx';
+import { AndroidInstallFloatingPrompt } from './components/PWAInstallButton.tsx';
 
 // Views
 import { DashboardView } from './components/views/DashboardView.tsx';
@@ -30,6 +31,7 @@ import { AttendanceView } from './components/views/AttendanceView.tsx';
 import { FinanceView } from './components/views/FinanceView.tsx';
 import { DocumentsView } from './components/views/DocumentsView.tsx';
 import { AnnouncementsView } from './components/views/AnnouncementsView.tsx';
+import { WartaDigitalView } from './components/views/WartaDigitalView.tsx';
 import { JemaatPortalView } from './components/views/JemaatPortalView.tsx';
 import { BackupView } from './components/views/BackupView.tsx';
 import { AuditLogsView } from './components/views/AuditLogsView.tsx';
@@ -120,7 +122,7 @@ export default function App() {
   // If not logged in, showPublicSite is forced to true
   const [showPublicSite, setShowPublicSite] = useState<boolean>(() => {
     try {
-      return !localStorage.getItem('sysjeger_user');
+      return !(localStorage.getItem('sysjeger_user') && api.getAuthToken());
     } catch {
       return true;
     }
@@ -538,7 +540,12 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (currentUser?.role === 'Jemaat' && currentView !== 'portal' && currentView !== 'settings') {
+    if (
+      currentUser?.role === 'Jemaat' &&
+      currentView !== 'portal' &&
+      currentView !== 'warta-digital' &&
+      currentView !== 'settings'
+    ) {
       setCurrentView('portal');
     }
   }, [currentUser?.role, currentView]);
@@ -1323,6 +1330,8 @@ export default function App() {
           onClose={() => setShowLoginModal(false)}
           onLoginSuccess={handleLoginSuccess}
         />
+
+        <AndroidInstallFloatingPrompt />
       </>
     );
   }
@@ -1654,6 +1663,16 @@ export default function App() {
             />
           )}
 
+          {currentView === 'warta-digital' && (
+            <WartaDigitalView
+              announcements={announcements}
+              churchSettings={churchSettings}
+              rayons={rayons}
+              canManage={Boolean(currentUser && currentUser.role !== 'Jemaat')}
+              onManageWarta={() => setCurrentView('announcements')}
+            />
+          )}
+
           {currentView === 'workspace' && (
             <GoogleWorkspaceView
               members={members}
@@ -1853,6 +1872,9 @@ export default function App() {
 
       {/* Network & Offline Status Banner */}
       <OfflineIndicator />
+
+      {/* Direct Android PWA Install Prompt */}
+      <AndroidInstallFloatingPrompt />
     </div>
   );
 }

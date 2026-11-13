@@ -26,6 +26,7 @@ import {
   Compass,
   Cloud,
   Bot,
+  Newspaper,
 } from 'lucide-react';
 import type { User } from '../types/index.ts';
 import { PWAInstallButton } from './PWAInstallButton.tsx';
@@ -86,6 +87,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         { id: 'attendance', label: 'Absensi Kehadiran', icon: CheckSquare },
         { id: 'finance', label: 'Keuangan Kas Gereja', icon: Wallet },
         { id: 'announcements', label: 'Warta Jemaat', icon: FileText },
+        { id: 'warta-digital', label: 'Warta Digital (Share WA)', icon: Newspaper },
         { id: 'workspace', label: 'Google Workspace', icon: Cloud },
         { id: 'documents', label: 'Dokumen Digital', icon: FolderArchive },
         { id: 'reports', label: 'Laporan & Cetak A4', icon: Printer },
@@ -107,7 +109,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
     ? menuSections
         .map((section) => ({
           ...section,
-          items: section.items.filter((item) => item.id === 'portal' || item.id === 'settings'),
+          items: section.items.filter(
+            (item) => item.id === 'portal' || item.id === 'warta-digital' || item.id === 'settings'
+          ),
         }))
         .filter((section) => section.items.length > 0)
     : menuSections;
