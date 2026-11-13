@@ -20,6 +20,9 @@ import {
   Fingerprint,
   ScanFace,
   Trash2,
+  Copy,
+  Check,
+  MessageCircle,
 } from 'lucide-react';
 import { usePWAInstall } from '../../hooks/usePWAInstall.ts';
 import type { ChurchSettings, Member, Rayon, User } from '../../types/index.ts';
@@ -59,6 +62,31 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const { isInstallable, isInstalled, isIOS, install } = usePWAInstall();
   const [showIOSModal, setShowIOSModal] = useState(false);
   const [installSuccess, setInstallSuccess] = useState(false);
+  const [copiedUrl, setCopiedUrl] = useState(false);
+
+  const liveAppUrl = typeof window !== 'undefined' ? window.location.origin : 'https://gmit-betel-fuimelang.vercel.app';
+
+  const handleCopyAppUrl = async () => {
+    try {
+      await navigator.clipboard.writeText(liveAppUrl);
+      setCopiedUrl(true);
+      setTimeout(() => setCopiedUrl(false), 3000);
+    } catch {
+      // Fallback hidden input copy if clipboard API blocked
+      const input = document.createElement('input');
+      input.value = liveAppUrl;
+      document.body.appendChild(input);
+      input.select();
+      document.execCommand('copy');
+      document.body.removeChild(input);
+      setCopiedUrl(true);
+      setTimeout(() => setCopiedUrl(false), 3000);
+    }
+  };
+
+  const whatsappInviteUrl = `https://wa.me/?text=${encodeURIComponent(
+    `Shalom Majelis & Admin GMIT Betel Fuimelang.\n\nSilakan buka aplikasi SYSJEGER V2.1 melalui Google Chrome di HP Android Anda:\n${liveAppUrl}\n\nCara instal langsung menjadi Aplikasi Android:\n1. Buka tautan di atas menggunakan Chrome\n2. Ketuk tombol "Instal Aplikasi" (atau titik tiga ⋮ > Instal Aplikasi)\n3. Aplikasi dapat dipakai langsung secara Online maupun Offline.`
+  )}`;
 
   // WebAuthn Biometric settings state
   const [biometricSupported, setBiometricSupported] = useState(false);
@@ -346,6 +374,35 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
             <div className="text-center text-[11px] text-slate-400">
               Mendukung Android (Chrome/Edge/Samsung) & iOS Safari
+            </div>
+
+            {/* Shareable Vercel / App URL for Other Admins */}
+            <div className="p-3.5 rounded-2xl bg-slate-900/90 border border-slate-700/80 space-y-2.5 text-left">
+              <div className="text-[11px] font-bold text-amber-300">
+                Bagikan ke HP Anda & Admin Lain
+              </div>
+              <div className="px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-[11px] font-mono text-cyan-300 truncate select-all" title={liveAppUrl}>
+                {liveAppUrl}
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={handleCopyAppUrl}
+                  className="py-2 px-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-[11px] font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  {copiedUrl ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-amber-400" />}
+                  <span>{copiedUrl ? 'Tersalin!' : 'Salin URL'}</span>
+                </button>
+                <a
+                  href={whatsappInviteUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="py-2 px-2.5 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/40 text-[11px] font-semibold flex items-center justify-center gap-1.5 transition-colors"
+                >
+                  <MessageCircle className="w-3.5 h-3.5" />
+                  <span>Kirim WA</span>
+                </a>
+              </div>
             </div>
           </div>
         </div>

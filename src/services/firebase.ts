@@ -1,6 +1,13 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider } from 'firebase/auth';
-import { initializeFirestore, doc, getDocFromServer } from 'firebase/firestore';
+import {
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+  doc,
+  getDocFromServer,
+  type Firestore,
+} from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 export const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
@@ -8,13 +15,32 @@ export const FIRESTORE_DATABASE_ID =
   (firebaseConfig as any).firestoreDatabaseId ||
   'ai-studio-gmitbetelfuimela-5319dba1-69fb-4d38-bee2-9c9529e50460';
 
-export const db = initializeFirestore(
-  app,
-  {
-    experimentalForceLongPolling: true,
-  },
-  FIRESTORE_DATABASE_ID
-);
+function createFirestoreInstance(): Firestore {
+  try {
+    return initializeFirestore(
+      app,
+      {
+        experimentalForceLongPolling: true,
+        localCache: persistentLocalCache({
+          tabManager: persistentMultipleTabManager(),
+        }),
+      },
+      FIRESTORE_DATABASE_ID
+    );
+  } catch (err) {
+    // Fallback for restricted WebViews / private browsing without IndexedDB
+    console.warn('[Firebase] IndexedDB offline cache unavailable, using memory cache:', err);
+    return initializeFirestore(
+      app,
+      {
+        experimentalForceLongPolling: true,
+      },
+      FIRESTORE_DATABASE_ID
+    );
+  }
+}
+
+export const db = createFirestoreInstance();
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 
@@ -53,13 +79,13 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
       emailVerified: auth.currentUser?.emailVerified,
       isAnonymous: auth.currentUser?.isAnonymous,
       tenantId: auth.currentUser?.tenantId,
-      providerInfo: auth.currentUser?.providerData?.map(provider => ({
+      providerInfo: auth.currentUser?.providerData?.map((provider) => ({
         providerId: provider.providerId,
         email: provider.email,
-      })) || []
+      })) || [],
     },
     operationType,
-    path
+    path,
   };
   console.error('Firestore Error: ', JSON.stringify(errInfo));
   throw new Error(JSON.stringify(errInfo));

@@ -91,6 +91,8 @@ export function validateMemberInput(data: Partial<Member>): { valid: boolean; er
   }
   if (!data.birthDate) {
     errors.push('Tanggal lahir wajib diisi');
+  } else if (!/^\d{4}-\d{2}-\d{2}$/.test(String(data.birthDate).trim())) {
+    errors.push('Format tanggal lahir harus YYYY-MM-DD');
   }
   if (!data.rayonId) {
     errors.push('Rayon pelayanan wajib dipilih');

@@ -2005,9 +2005,52 @@ apiRouter.post('/import/members', (req, res) => {
     )
   `);
 
-  // Track family counts for generating family numbers
-  let familyCount = (db.prepare('SELECT count(*) as count FROM families').get() as { count: number }).count;
-  let memberCount = (db.prepare('SELECT count(*) as count FROM members').get() as { count: number }).count;
+  // Track existing memberNo & familyNo to guarantee zero UNIQUE collisions even after deletions
+  const existingFamilyNos = new Set<string>(
+    (db.prepare('SELECT family_no FROM families').all() as { family_no: string }[])
+      .map((r) => String(r.family_no || '').trim().toUpperCase())
+      .filter(Boolean)
+  );
+  const existingMemberNos = new Set<string>(
+    (db.prepare('SELECT member_no FROM members').all() as { member_no: string }[])
+      .map((r) => String(r.member_no || '').trim().toUpperCase())
+      .filter(Boolean)
+  );
+  let familyCount = existingFamilyNos.size;
+  let memberCount = existingMemberNos.size;
+
+  const nextUniqueFamilyNo = (): string => {
+    let candidate = '';
+    do {
+      familyCount++;
+      candidate = generateFamilyNo(familyCount);
+    } while (existingFamilyNos.has(candidate.toUpperCase()));
+    existingFamilyNos.add(candidate.toUpperCase());
+    return candidate;
+  };
+
+  const nextUniqueMemberNo = (preferred?: string): string => {
+    const cleanPref = String(preferred || '').trim();
+    if (cleanPref && !existingMemberNos.has(cleanPref.toUpperCase())) {
+      existingMemberNos.add(cleanPref.toUpperCase());
+      return cleanPref;
+    }
+    let candidate = '';
+    do {
+      memberCount++;
+      candidate = generateMemberNo(memberCount);
+    } while (existingMemberNos.has(candidate.toUpperCase()));
+    existingMemberNos.add(candidate.toUpperCase());
+    return candidate;
+  };
+
+  const isIsoDate = (val: string) => {
+    const m = String(val || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!m) return false;
+    const y = Number(m[1]), mo = Number(m[2]), d = Number(m[3]);
+    const dt = new Date(Date.UTC(y, mo - 1, d));
+    return dt.getUTCFullYear() === y && dt.getUTCMonth() === mo - 1 && dt.getUTCDate() === d;
+  };
 
   for (let i = 0; i < members.length; i++) {
     const item = members[i];
@@ -2016,7 +2059,7 @@ apiRouter.post('/import/members', (req, res) => {
       let resolvedRayonId = String(item.rayonId || '').trim();
       if (resolvedRayonId) {
         const lowerRayon = resolvedRayonId.toLowerCase();
-        const foundRayon = allRayons.find(r => 
+        const foundRayon = allRayons.find(r =>
           r.id.toLowerCase() === lowerRayon ||
           r.code.toLowerCase() === lowerRayon ||
           r.name.toLowerCase() === lowerRayon ||
@@ -2031,11 +2074,24 @@ apiRouter.post('/import/members', (req, res) => {
       if (!resolvedRayonId && allRayons.length > 0) resolvedRayonId = allRayons[0].id;
       item.rayonId = resolvedRayonId;
 
+      // Normalize birthDate & gender before validation
+      if (item.birthDate && !isIsoDate(String(item.birthDate))) {
+        const rawBd = String(item.birthDate);
+        item.birthDate = '';
+        const bdWarn = `Tanggal lahir tidak valid ("${rawBd}") — diisi sementara 2000-01-01`;
+        if (!String(item.notes || '').includes('PERLU KOREKSI')) {
+          item.notes = item.notes ? `[⚠️ PERLU KOREKSI: ${bdWarn}] ${item.notes}` : `[⚠️ PERLU KOREKSI: ${bdWarn}]`;
+        }
+      }
+      if (item.gender && item.gender !== 'Laki-laki' && item.gender !== 'Perempuan') {
+        item.gender = /^p|^w|perempuan|wanita/i.test(String(item.gender)) ? 'Perempuan' : 'Laki-laki';
+      }
+
       // 2. Resolve Categorial Group
       let resolvedCatId = String(item.categorialGroupId || '').trim();
       if (resolvedCatId) {
         const lowerCat = resolvedCatId.toLowerCase();
-        const foundCat = allCategorials.find(c => 
+        const foundCat = allCategorials.find(c =>
           c.id.toLowerCase() === lowerCat ||
           c.code.toLowerCase() === lowerCat ||
           c.name.toLowerCase().includes(lowerCat)
@@ -2054,13 +2110,16 @@ apiRouter.post('/import/members', (req, res) => {
       item.categorialGroupId = resolvedCatId;
 
       // Validate Member - Imperfect rows will STILL be imported with safe defaults & warning tag
+      const preTagged = String(item.notes || '').includes('PERLU KOREKSI');
       const v = validateMemberInput(item);
-      if (!v.valid) {
-        warnings.push(`Baris ${i + 1} (${item.fullName || 'Data Jemaat'}): Ditandai untuk koreksi manual (${v.errors.join(', ')})`);
-        
+      if (!v.valid || preTagged) {
+        const reasonSummary = v.errors.length > 0 ? v.errors.join(', ') : 'Ditandai dari hasil validasi file Excel';
+        warnings.push(`Baris ${i + 1} (${item.fullName || 'Data Jemaat'}): Ditandai untuk koreksi manual (${reasonSummary})`);
+
         // Provide safe defaults so database insert succeeds cleanly
-        if (!item.fullName || item.fullName.trim().length < 2) {
-          item.fullName = item.fullName?.trim() ? `${item.fullName} (Perlu Koreksi Nama)` : `Jemaat Baris ${i + 1} (Perlu Koreksi Nama)`;
+        if (!item.fullName || String(item.fullName).trim().length < 2) {
+          const cleanName = String(item.fullName || '').trim();
+          item.fullName = cleanName ? `${cleanName} (Perlu Koreksi Nama)` : `Jemaat Baris ${i + 1} (Perlu Koreksi Nama)`;
         }
         if (!item.birthDate) item.birthDate = '2000-01-01';
         if (!item.gender) item.gender = 'Laki-laki';
@@ -2070,8 +2129,8 @@ apiRouter.post('/import/members', (req, res) => {
         if (!item.status) item.status = 'Aktif';
         if (!item.address) item.address = 'Desa Lembur Tengah';
 
-        const warnNote = `[⚠️ PERLU KOREKSI: ${v.errors.join('; ')}]`;
-        if (!item.notes || !item.notes.includes('PERLU KOREKSI')) {
+        if (!preTagged && v.errors.length > 0) {
+          const warnNote = `[⚠️ PERLU KOREKSI: ${v.errors.join('; ')}]`;
           item.notes = item.notes ? `${warnNote} ${item.notes}` : warnNote;
         }
       }
@@ -2079,7 +2138,7 @@ apiRouter.post('/import/members', (req, res) => {
       // 3. Automatic Family Card (KK) Creation / Linking
       let linkedFamilyId = item.familyId || '';
       const rawCardNo = String(item.familyCardNo || '').trim();
-      const rawHeadName = String(item.headOfFamilyName || '').trim();
+      const rawHeadName = String(item.headOfFamilyName || item.familyName || '').trim();
 
       if (rawCardNo || rawHeadName || item.familyRole === 'Kepala Keluarga') {
         const keyByNo = rawCardNo ? rawCardNo.toLowerCase() : '';
@@ -2088,10 +2147,13 @@ apiRouter.post('/import/members', (req, res) => {
         let targetFamily = (keyByNo && familyMap.get(keyByNo)) || (keyByName && familyMap.get(keyByName));
 
         if (!targetFamily) {
-          // Create new Family (KK) automatically!
-          familyCount++;
-          const newFamId = 'fam-imp-' + Date.now() + '-' + i;
-          const newFamNo = rawCardNo || generateFamilyNo(familyCount);
+          // Create new Family (KK) automatically without colliding with existing family_no!
+          const newFamId = 'fam-imp-' + Date.now() + '-' + i + '-' + Math.random().toString(36).slice(2, 6);
+          let newFamNo = rawCardNo && !existingFamilyNos.has(rawCardNo.toUpperCase())
+            ? rawCardNo
+            : nextUniqueFamilyNo();
+          if (newFamNo === rawCardNo) existingFamilyNos.add(newFamNo.toUpperCase());
+
           const headName = (item.familyRole === 'Kepala Keluarga' ? item.fullName : rawHeadName) || `Keluarga ${item.fullName}`;
 
           insertFamily.run(
@@ -2107,9 +2169,11 @@ apiRouter.post('/import/members', (req, res) => {
           );
 
           targetFamily = { id: newFamId, familyNo: newFamNo, headName };
-          if (rawCardNo) familyMap.set(keyByNo, targetFamily);
-          if (rawHeadName) familyMap.set(keyByName, targetFamily);
-          familyMap.set(`name_${headName.toLowerCase()}`, targetFamily);
+          if (rawCardNo && !familyMap.has(keyByNo)) familyMap.set(keyByNo, targetFamily);
+          if (rawHeadName && !familyMap.has(keyByName)) familyMap.set(keyByName, targetFamily);
+          if (!familyMap.has(`name_${headName.toLowerCase()}`)) {
+            familyMap.set(`name_${headName.toLowerCase()}`, targetFamily);
+          }
           familiesCreatedCount++;
         }
 
@@ -2117,9 +2181,8 @@ apiRouter.post('/import/members', (req, res) => {
         item.familyCardNo = targetFamily.familyNo;
       }
 
-      const id = 'm-imp-' + Date.now() + '-' + i;
-      memberCount++;
-      const memberNo = item.memberNo || generateMemberNo(memberCount);
+      const id = 'm-imp-' + Date.now() + '-' + i + '-' + Math.random().toString(36).slice(2, 6);
+      const memberNo = nextUniqueMemberNo(item.memberNo);
 
       insertMember.run(
         id, memberNo, item.fullName, item.nickname || '', item.nik || '', item.familyCardNo || '',

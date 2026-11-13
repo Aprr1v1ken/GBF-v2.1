@@ -123,6 +123,37 @@ export function setAuthToken(token?: string | null) {
 
 export function clearAuthToken() { setAuthToken(null); }
 
+let backendServerReachable = false;
+
+export function isBackendServerReachable(): boolean {
+  return backendServerReachable;
+}
+
+export class BackendOfflineError extends Error {
+  isOfflineOrStatic = true;
+  constructor(message = 'Server backend tidak terjangkau atau sedang offline') {
+    super(message);
+    this.name = 'BackendOfflineError';
+  }
+}
+
+export function isOfflineOrStaticError(err: unknown): boolean {
+  if (!err) return false;
+  if (err instanceof BackendOfflineError) return true;
+  if (typeof navigator !== 'undefined' && !navigator.onLine) return true;
+  if (err instanceof TypeError) return true;
+  if (typeof err === 'object' && err !== null && (err as any).isOfflineOrStatic === true) return true;
+  const msg = err instanceof Error ? err.message.toLowerCase() : String(err).toLowerCase();
+  return (
+    msg.includes('failed to fetch') ||
+    msg.includes('networkerror') ||
+    msg.includes('network request failed') ||
+    msg.includes('load failed') ||
+    msg.includes('tidak terjangkau') ||
+    msg.includes('respons tidak valid')
+  );
+}
+
 // Keep the API surface small while ensuring every request carries the same
 // server-issued session, including requests made by offline retry helpers.
 export async function apiFetch(input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
@@ -138,18 +169,44 @@ export async function apiFetch(input: RequestInfo | URL, init: RequestInit = {})
 }
 
 // Safely parse JSON responses without throwing syntax errors if Netlify returns HTML
-export async function safeJson<T = any>(fetchPromise: Promise<Response>, fallback: T): Promise<T> {
+export async function safeJson<T = any>(
+  fetchPromise: Promise<Response>,
+  fallback: T
+): Promise<T & { _fromBackend?: boolean }> {
   try {
     const res = await fetchPromise;
     const contentType = res.headers.get('content-type') || '';
     if (!contentType.includes('application/json')) {
-      return fallback;
+      return fallback as T & { _fromBackend?: boolean };
     }
     const data = await res.json();
-    return data !== undefined && data !== null ? data : fallback;
+    if (res.ok && data !== undefined && data !== null) {
+      backendServerReachable = true;
+      if (typeof data === 'object' && !Array.isArray(data)) {
+        return { ...(data as Record<string, any>), _fromBackend: true } as T & { _fromBackend?: boolean };
+      }
+      return data as T & { _fromBackend?: boolean };
+    }
+    return fallback as T & { _fromBackend?: boolean };
   } catch {
-    return fallback;
+    return fallback as T & { _fromBackend?: boolean };
   }
+}
+
+export async function parseMutationResponse<T = any>(res: Response, fallbackMessage = 'Gagal terhubung ke server'): Promise<T> {
+  const contentType = res.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new BackendOfflineError('Host tidak menjalankan backend API; perubahan disimpan ke antrean sinkronisasi lokal.');
+  }
+  const data = await res.json().catch(() => null);
+  if (res.status >= 502) {
+    throw new BackendOfflineError(data?.message || 'Server sedang tidak tersedia sementara');
+  }
+  backendServerReachable = true;
+  if (!res.ok || (data && data.success === false)) {
+    throw new Error(data?.message || `${fallbackMessage} (${res.status})`);
+  }
+  return data as T;
 }
 
 export async function loginApi(username: string, password: string): Promise<{ success: boolean; user?: User; token?: string; message?: string }> {
@@ -316,7 +373,7 @@ export async function createMemberApi(data: Partial<Member>): Promise<{ success:
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
-  return safeJson<{ success: boolean; message: string; id?: string; memberNo?: string; member?: Member }>(Promise.resolve(res), { success: true, message: 'Data jemaat tersimpan' });
+  return parseMutationResponse<{ success: boolean; message: string; id?: string; memberNo?: string; member?: Member }>(res, 'Gagal menyimpan jemaat');
 }
 
 export async function updateMemberApi(id: string, data: Partial<Member>) {
@@ -325,14 +382,14 @@ export async function updateMemberApi(id: string, data: Partial<Member>) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
-  return safeJson(Promise.resolve(res), { success: true, message: 'Data jemaat diperbarui' });
+  return parseMutationResponse(res, 'Gagal memperbarui data jemaat');
 }
 
 export async function deleteMemberApi(id: string) {
   const res = await apiFetch(`${API_BASE}/members/${id}`, {
     method: 'DELETE',
   });
-  return safeJson(Promise.resolve(res), { success: true, message: 'Data jemaat dihapus' });
+  return parseMutationResponse(res, 'Gagal menghapus data jemaat');
 }
 
 export async function fetchFamiliesApi() {
@@ -345,7 +402,7 @@ export async function createFamilyApi(data: Partial<Family>) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
-  return safeJson(Promise.resolve(res), { success: true, message: 'Data KK tersimpan' });
+  return parseMutationResponse(res, 'Gagal menyimpan KK');
 }
 
 export async function updateFamilyApi(id: string, data: Partial<Family>) {
@@ -354,12 +411,12 @@ export async function updateFamilyApi(id: string, data: Partial<Family>) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
-  return safeJson(Promise.resolve(res), { success: true, message: 'Data KK diperbarui' });
+  return parseMutationResponse(res, 'Gagal memperbarui KK');
 }
 
 export async function deleteFamilyApi(id: string) {
   const res = await apiFetch(`${API_BASE}/families/${id}`, { method: 'DELETE' });
-  return safeJson(Promise.resolve(res), { success: true, message: 'Data KK dihapus' });
+  return parseMutationResponse(res, 'Gagal menghapus KK');
 }
 
 export async function fetchLocationsApi(): Promise<{ success: boolean; count: number; locations: ChurchLocation[] }> {
@@ -497,7 +554,7 @@ export async function createEventApi(data: Partial<ChurchEvent>) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
-  return safeJson(Promise.resolve(res), { success: true, message: 'Kegiatan tersimpan' });
+  return parseMutationResponse(res, 'Gagal menyimpan kegiatan');
 }
 
 export async function updateEventApi(id: string, data: Partial<ChurchEvent>) {
@@ -506,12 +563,12 @@ export async function updateEventApi(id: string, data: Partial<ChurchEvent>) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
-  return safeJson(Promise.resolve(res), { success: true, message: 'Kegiatan diperbarui' });
+  return parseMutationResponse(res, 'Gagal memperbarui kegiatan');
 }
 
 export async function deleteEventApi(id: string) {
   const res = await apiFetch(`${API_BASE}/events/${id}`, { method: 'DELETE' });
-  return safeJson(Promise.resolve(res), { success: true, message: 'Kegiatan dihapus' });
+  return parseMutationResponse(res, 'Gagal menghapus kegiatan');
 }
 
 export async function fetchSchedulesApi() {
@@ -524,7 +581,7 @@ export async function createScheduleApi(data: Partial<ServiceSchedule>) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
-  return safeJson(Promise.resolve(res), { success: true, message: 'Jadwal tersimpan' });
+  return parseMutationResponse(res, 'Gagal menyimpan jadwal');
 }
 
 export async function updateScheduleApi(id: string, data: Partial<ServiceSchedule>) {
@@ -533,17 +590,17 @@ export async function updateScheduleApi(id: string, data: Partial<ServiceSchedul
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
-  return safeJson(Promise.resolve(res), { success: true, message: 'Jadwal diperbarui' });
+  return parseMutationResponse(res, 'Gagal memperbarui jadwal');
 }
 
 export async function deleteScheduleApi(id: string) {
   const res = await apiFetch(`${API_BASE}/schedules/${id}`, { method: 'DELETE' });
-  return safeJson(Promise.resolve(res), { success: true, message: 'Jadwal dihapus' });
+  return parseMutationResponse(res, 'Gagal menghapus jadwal');
 }
 
 export async function clearAllSchedulesApi() {
   const res = await apiFetch(`${API_BASE}/schedules`, { method: 'DELETE' });
-  return safeJson(Promise.resolve(res), { success: true, message: 'Semua jadwal dibersihkan' });
+  return parseMutationResponse(res, 'Gagal membersihkan jadwal');
 }
 
 export async function fetchAttendanceApi() {
@@ -556,7 +613,7 @@ export async function createAttendanceApi(data: Partial<AttendanceRecord>) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
-  return safeJson(Promise.resolve(res), { success: true, message: 'Presensi tersimpan' });
+  return parseMutationResponse(res, 'Gagal menyimpan presensi');
 }
 
 export async function fetchFinanceApi() {
@@ -569,7 +626,7 @@ export async function createFinanceApi(data: Partial<FinancialTransaction>) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
-  return safeJson(Promise.resolve(res), { success: true, message: 'Transaksi keuangan tersimpan' });
+  return parseMutationResponse(res, 'Gagal menyimpan transaksi keuangan');
 }
 
 export async function fetchDocumentsApi() {
@@ -613,7 +670,7 @@ export async function createAnnouncementApi(data: Partial<Announcement>) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
-  return safeJson(Promise.resolve(res), { success: true, message: 'Warta tersimpan' });
+  return parseMutationResponse(res, 'Gagal menyimpan warta');
 }
 
 export async function updateAnnouncementApi(id: string, data: Partial<Announcement>) {
@@ -622,12 +679,12 @@ export async function updateAnnouncementApi(id: string, data: Partial<Announceme
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
-  return safeJson(Promise.resolve(res), { success: true, message: 'Warta diperbarui' });
+  return parseMutationResponse(res, 'Gagal memperbarui warta');
 }
 
 export async function deleteAnnouncementApi(id: string) {
   const res = await apiFetch(`${API_BASE}/announcements/${id}`, { method: 'DELETE' });
-  return safeJson(Promise.resolve(res), { success: true, message: 'Warta dihapus' });
+  return parseMutationResponse(res, 'Gagal menghapus warta');
 }
 
 export async function fetchCorrectionsApi() {
@@ -817,12 +874,12 @@ export async function generateChurchNewsApi(data: {
 
 export async function deleteFinanceApi(id: string) {
   const res = await apiFetch(`${API_BASE}/finance/${id}`, { method: 'DELETE' });
-  return res.json();
+  return parseMutationResponse(res, 'Gagal menghapus transaksi');
 }
 
 export async function deleteSacramentApi(type: string, id: string) {
   const res = await apiFetch(`${API_BASE}/sacraments/${type}/${id}`, { method: 'DELETE' });
-  return res.json();
+  return parseMutationResponse(res, 'Gagal menghapus sakramen');
 }
 
 export async function updateMemberPhotoApi(memberId: string, photoUrl: string) {
@@ -831,7 +888,7 @@ export async function updateMemberPhotoApi(memberId: string, photoUrl: string) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ photoUrl }),
   });
-  return res.json();
+  return parseMutationResponse(res, 'Gagal memperbarui foto jemaat');
 }
 
 export async function purgeSampleDataApi() {

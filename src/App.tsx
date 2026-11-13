@@ -40,6 +40,13 @@ import { N8nIntegrationView } from './components/views/N8nIntegrationView.tsx';
 import * as api from './services/api.ts';
 import { syncPendingActivityImages } from './services/cloud-sync.ts';
 import * as adminApi from './services/admin-api.ts';
+import {
+  isFirestoreSyncReady,
+  mirrorDocToFirestore,
+  removeDocFromFirestore,
+  pullCollectionFromFirestore,
+} from './services/firestore-sync.ts';
+import { calculateChurchStats } from './utils/church-logic.ts';
 
 // Heavy, less frequently used modules are loaded on demand for faster mobile startup.
 const AIAssistantView = React.lazy(() => import('./components/views/AIAssistantView.tsx').then((module) => ({ default: module.AIAssistantView })));
@@ -58,6 +65,10 @@ import {
   syncOfflineMemberPhotos,
   getOfflineDataSnapshot,
   cacheOfflineDataSnapshot,
+  enqueueUniversalOfflineMutation,
+  syncUniversalOfflineMutations,
+  getTotalPendingOfflineCount,
+  type OfflineMutationEntity,
 } from './utils/offline-sync.ts';
 import type {
   Member,
@@ -163,7 +174,7 @@ export default function App() {
     typeof navigator !== 'undefined' ? navigator.onLine : true
   );
   const [pendingOfflineCount, setPendingOfflineCount] = useState<number>(() =>
-    getOfflineMembersQueue().length
+    getTotalPendingOfflineCount()
   );
   const [syncingOffline, setSyncingOffline] = useState(false);
   const [syncToast, setSyncToast] = useState<{
@@ -171,22 +182,51 @@ export default function App() {
     type: 'success' | 'info' | 'error';
   } | null>(null);
 
-  // Load all data from API with Auto-Sync & Promise.allSettled Resilience
+  const universalSyncHandlers = useMemo(
+    () => ({
+      createMember: api.createMemberApi,
+      updateMember: api.updateMemberApi,
+      deleteMember: api.deleteMemberApi,
+      createFamily: api.createFamilyApi,
+      updateFamily: api.updateFamilyApi,
+      deleteFamily: api.deleteFamilyApi,
+      createFinance: api.createFinanceApi,
+      updateFinance: adminApi.updateFinanceApi,
+      deleteFinance: api.deleteFinanceApi,
+      createEvent: api.createEventApi,
+      updateEvent: api.updateEventApi,
+      deleteEvent: api.deleteEventApi,
+      createSchedule: api.createScheduleApi,
+      updateSchedule: api.updateScheduleApi,
+      deleteSchedule: api.deleteScheduleApi,
+      createAnnouncement: api.createAnnouncementApi,
+      updateAnnouncement: api.updateAnnouncementApi,
+      deleteAnnouncement: api.deleteAnnouncementApi,
+      createAttendance: api.createAttendanceApi,
+      deleteAttendance: adminApi.deleteAttendanceApi,
+    }),
+    []
+  );
+
+  // Load all data from API with Auto-Sync, Firestore Fallback, & Promise.allSettled Resilience
   const loadAllData = async () => {
-    // Retry pending activity images, member photos, and queued member records.
+    // Retry pending activity images, member photos, and queued records.
     if (currentUser && navigator.onLine) {
       await syncPendingActivityImages();
-    }
-    if (currentUser && Object.keys(getOfflineMemberPhotos()).length > 0 && navigator.onLine) {
-      await syncOfflineMemberPhotos(api.updateMemberPhotoApi);
-    }
-    // 1. Auto-sync any pending offline queue items if server is reachable
-    const pendingQueue = getOfflineMembersQueue();
-    if (currentUser && pendingQueue.length > 0) {
+      if (Object.keys(getOfflineMemberPhotos()).length > 0) {
+        await syncOfflineMemberPhotos(api.updateMemberPhotoApi);
+      }
+      if (getOfflineMembersQueue().length > 0) {
+        try {
+          await syncOfflineQueueToServer(api.createMemberApi);
+        } catch (syncErr) {
+          console.warn('Auto-sync offline member queue failed on loadAllData:', syncErr);
+        }
+      }
       try {
-        await syncOfflineQueueToServer(api.createMemberApi);
-      } catch (syncErr) {
-        console.warn('Auto-sync offline queue failed on loadAllData:', syncErr);
+        await syncUniversalOfflineMutations(universalSyncHandlers);
+      } catch (universalErr) {
+        console.warn('Auto-sync universal mutation queue failed on loadAllData:', universalErr);
       }
     }
 
@@ -251,12 +291,18 @@ export default function App() {
       const auditRes = val(15);
       const settingsRes = val(16);
 
-      if (statsRes?.stats) setStats(statsRes.stats);
-      else if (offlineSnapshot.stats) setStats(offlineSnapshot.stats);
+      const backendOnline = Boolean(
+        statsRes?._fromBackend ||
+        membersRes?._fromBackend ||
+        announcementsRes?._fromBackend ||
+        rayonsRes?._fromBackend
+      );
 
       // Handle Members: Combine server members with remaining pending offline items
       const pendingPhotos = getOfflineMemberPhotos();
-      const serverMembers: Member[] = (membersRes?.members || []).map((member: Member) => pendingPhotos[member.id] ? { ...member, photoUrl: pendingPhotos[member.id] } : member);
+      const serverMembers: Member[] = (membersRes?._fromBackend ? (membersRes?.members || []) : []).map((member: Member) =>
+        pendingPhotos[member.id] ? { ...member, photoUrl: pendingPhotos[member.id] } : member
+      );
       const remainingOffline = getOfflineMembersQueue();
       const offlineItems: Member[] = remainingOffline.map((item) => ({
         id: item.id || `offline-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
@@ -301,34 +347,69 @@ export default function App() {
         isOfflinePending: true,
       }));
 
-      // If server responded, synchronize state and cache accurately
-      if (currentUser && results[1].status === 'fulfilled' && membersRes) {
-        const combinedMembers = [
+      let resolvedMembers: Member[] = [];
+      if (currentUser && membersRes?._fromBackend) {
+        resolvedMembers = [
           ...offlineItems,
           ...serverMembers.filter((sm) => !offlineItems.some((om) => om.id === sm.id)),
         ];
-        setMembers(combinedMembers);
-        cacheMembersLocally(combinedMembers);
+        setMembers(resolvedMembers);
+        cacheMembersLocally(resolvedMembers);
       } else if (currentUser) {
-        // Fall back to local cached members only if server was unreachable
         const cached = getCachedMembersLocally();
-        if (cached.length > 0) {
-          setMembers(cached);
-        } else if (offlineSnapshot.members) {
-          setMembers(offlineSnapshot.members);
+        resolvedMembers = cached.length > 0 ? cached : (offlineSnapshot.members || []);
+        if (resolvedMembers.length > 0) {
+          setMembers(resolvedMembers);
         }
       }
-      setPendingOfflineCount(remainingOffline.length);
 
-      if (familiesRes?.families) setFamilies(familiesRes.families);
-      else if (offlineSnapshot.families) setFamilies(offlineSnapshot.families);
+      // Cross-device Cloud Firestore pull when backend API is absent (e.g. Netlify static) & Firebase user is signed in
+      let firestoreFamilies: Family[] = [];
+      let firestoreTransactions: FinancialTransaction[] = [];
+      let firestoreEvents: ChurchEvent[] = [];
+      let firestoreSchedules: ServiceSchedule[] = [];
+      let firestoreAnnouncements: Announcement[] = [];
+
+      if (currentUser && !backendOnline && isFirestoreSyncReady()) {
+        const [fbMembers, fbFamilies, fbTx, fbEvents, fbSchedules, fbAnnouncements] = await Promise.all([
+          !isJemaat ? pullCollectionFromFirestore<Member>('members') : Promise.resolve([]),
+          !isJemaat ? pullCollectionFromFirestore<Family>('families') : Promise.resolve([]),
+          !isJemaat ? pullCollectionFromFirestore<FinancialTransaction>('financial_transactions') : Promise.resolve([]),
+          pullCollectionFromFirestore<ChurchEvent>('events'),
+          pullCollectionFromFirestore<ServiceSchedule>('schedules'),
+          pullCollectionFromFirestore<Announcement>('announcements'),
+        ]);
+        if (fbMembers.length > 0) {
+          const mergedMap = new Map<string, Member>();
+          fbMembers.forEach((m) => mergedMap.set(m.id, m));
+          resolvedMembers.forEach((m) => mergedMap.set(m.id, m));
+          resolvedMembers = [...mergedMap.values()];
+          setMembers(resolvedMembers);
+          cacheMembersLocally(resolvedMembers);
+        }
+        firestoreFamilies = fbFamilies;
+        firestoreTransactions = fbTx;
+        firestoreEvents = fbEvents;
+        firestoreSchedules = fbSchedules;
+        firestoreAnnouncements = fbAnnouncements;
+      }
+
+      setPendingOfflineCount(getTotalPendingOfflineCount());
+
+      const resolvedFamilies = familiesRes?._fromBackend
+        ? familiesRes.families
+        : (firestoreFamilies.length > 0 ? firestoreFamilies : (offlineSnapshot.families || []));
+      if (familiesRes?._fromBackend || firestoreFamilies.length > 0 || offlineSnapshot.families) {
+        setFamilies(resolvedFamilies);
+      }
+
       if (rayonsRes?.rayons) setRayons(rayonsRes.rayons);
       else if (offlineSnapshot.rayons) setRayons(offlineSnapshot.rayons);
       if (catRes?.categorials) setCategorials(catRes.categorials);
       else if (offlineSnapshot.categorials) setCategorials(offlineSnapshot.categorials);
-      if (staffRes?.staff) setStaff(staffRes.staff);
+      if (staffRes?._fromBackend && staffRes?.staff) setStaff(staffRes.staff);
       else if (offlineSnapshot.staff) setStaff(offlineSnapshot.staff);
-      if (sacramentsRes) {
+      if (sacramentsRes?._fromBackend) {
         setBaptisms(sacramentsRes.baptisms || []);
         setConfirmations(sacramentsRes.confirmations || []);
         setMarriages(sacramentsRes.marriages || []);
@@ -337,50 +418,84 @@ export default function App() {
         setConfirmations(offlineSnapshot.confirmations || []);
         setMarriages(offlineSnapshot.marriages || []);
       }
-      if (mutationsRes?.mutations) setMutations(mutationsRes.mutations);
+      if (mutationsRes?._fromBackend && mutationsRes?.mutations) setMutations(mutationsRes.mutations);
       else if (offlineSnapshot.mutations) setMutations(offlineSnapshot.mutations);
-      if (eventsRes?.events) setEvents(eventsRes.events);
-      else if (offlineSnapshot.events) setEvents(offlineSnapshot.events);
-      if (schedulesRes?.schedules) setSchedules(schedulesRes.schedules);
-      else if (offlineSnapshot.schedules) setSchedules(offlineSnapshot.schedules);
-      if (attendanceRes?.attendance) setAttendance(attendanceRes.attendance);
+
+      const resolvedEvents = eventsRes?._fromBackend
+        ? eventsRes.events
+        : (firestoreEvents.length > 0 ? firestoreEvents : (offlineSnapshot.events || []));
+      if (eventsRes?._fromBackend || firestoreEvents.length > 0 || offlineSnapshot.events) setEvents(resolvedEvents);
+
+      const resolvedSchedules = schedulesRes?._fromBackend
+        ? schedulesRes.schedules
+        : (firestoreSchedules.length > 0 ? firestoreSchedules : (offlineSnapshot.schedules || []));
+      if (schedulesRes?._fromBackend || firestoreSchedules.length > 0 || offlineSnapshot.schedules) setSchedules(resolvedSchedules);
+
+      if (attendanceRes?._fromBackend && attendanceRes?.attendance) setAttendance(attendanceRes.attendance);
       else if (offlineSnapshot.attendance) setAttendance(offlineSnapshot.attendance);
-      if (financeRes?.transactions) setTransactions(financeRes.transactions);
-      else if (offlineSnapshot.transactions) setTransactions(offlineSnapshot.transactions);
-      if (docsRes?.documents) setDocuments(docsRes.documents);
+
+      const resolvedTransactions = financeRes?._fromBackend
+        ? financeRes.transactions
+        : (firestoreTransactions.length > 0 ? firestoreTransactions : (offlineSnapshot.transactions || []));
+      if (financeRes?._fromBackend || firestoreTransactions.length > 0 || offlineSnapshot.transactions) {
+        setTransactions(resolvedTransactions);
+      }
+
+      if (docsRes?._fromBackend && docsRes?.documents) setDocuments(docsRes.documents);
       else if (offlineSnapshot.documents) setDocuments(offlineSnapshot.documents);
-      if (announcementsRes?.announcements) setAnnouncements(announcementsRes.announcements);
-      else if (offlineSnapshot.announcements) setAnnouncements(offlineSnapshot.announcements);
-      if (correctionsRes?.corrections) setCorrections(correctionsRes.corrections);
+
+      const resolvedAnnouncements = announcementsRes?._fromBackend
+        ? announcementsRes.announcements
+        : (firestoreAnnouncements.length > 0 ? firestoreAnnouncements : (offlineSnapshot.announcements || []));
+      if (announcementsRes?._fromBackend || firestoreAnnouncements.length > 0 || offlineSnapshot.announcements) {
+        setAnnouncements(resolvedAnnouncements);
+      }
+
+      if (correctionsRes?._fromBackend && correctionsRes?.corrections) setCorrections(correctionsRes.corrections);
       else if (offlineSnapshot.corrections) setCorrections(offlineSnapshot.corrections);
-      if (auditRes?.logs) setAuditLogs(auditRes.logs);
+      if (auditRes?._fromBackend && auditRes?.logs) setAuditLogs(auditRes.logs);
       else if (offlineSnapshot.auditLogs) setAuditLogs(offlineSnapshot.auditLogs);
-      if (settingsRes?.settings) setChurchSettings(settingsRes.settings);
+      if (settingsRes?._fromBackend && settingsRes?.settings) setChurchSettings(settingsRes.settings);
       else if (offlineSnapshot.churchSettings) setChurchSettings(offlineSnapshot.churchSettings);
       else if (!currentUser) setChurchSettings(DEFAULT_CHURCH_SETTINGS);
+
+      // Compute accurate live stats even when offline or in static host mode
+      const computedLocalStats = currentUser
+        ? {
+            ...calculateChurchStats(resolvedMembers, resolvedFamilies, resolvedTransactions),
+            upcomingEvents: resolvedEvents.slice(0, 5),
+            nextService: resolvedSchedules[0] || null,
+          }
+        : null;
+
+      const finalStats = statsRes?._fromBackend && statsRes?.stats && remainingOffline.length === 0
+        ? statsRes.stats
+        : (computedLocalStats || offlineSnapshot.stats || statsRes?.stats || null);
+
+      if (finalStats) setStats(finalStats);
 
       // Keep a device snapshot for offline reading. Server responses remain the
       // source of truth whenever the connection is available.
       if (currentUser) cacheOfflineDataSnapshot({
-        stats: statsRes?.stats || offlineSnapshot.stats || null,
-        members: results[1].status === 'fulfilled' ? [...offlineItems, ...serverMembers] : offlineSnapshot.members || getCachedMembersLocally(),
-        families: familiesRes?.families || offlineSnapshot.families || [],
-        rayons: rayonsRes?.rayons || offlineSnapshot.rayons || [],
-        categorials: catRes?.categorials || offlineSnapshot.categorials || [],
-        staff: staffRes?.staff || offlineSnapshot.staff || [],
-        baptisms: sacramentsRes?.baptisms || offlineSnapshot.baptisms || [],
-        confirmations: sacramentsRes?.confirmations || offlineSnapshot.confirmations || [],
-        marriages: sacramentsRes?.marriages || offlineSnapshot.marriages || [],
-        mutations: mutationsRes?.mutations || offlineSnapshot.mutations || [],
-        events: eventsRes?.events || offlineSnapshot.events || [],
-        schedules: schedulesRes?.schedules || offlineSnapshot.schedules || [],
-        attendance: attendanceRes?.attendance || offlineSnapshot.attendance || [],
-        transactions: financeRes?.transactions || offlineSnapshot.transactions || [],
-        documents: docsRes?.documents || offlineSnapshot.documents || [],
-        announcements: announcementsRes?.announcements || offlineSnapshot.announcements || [],
-        corrections: correctionsRes?.corrections || offlineSnapshot.corrections || [],
-        auditLogs: auditRes?.logs || offlineSnapshot.auditLogs || [],
-        churchSettings: settingsRes?.settings || offlineSnapshot.churchSettings || churchSettings,
+        stats: finalStats,
+        members: resolvedMembers,
+        families: resolvedFamilies,
+        rayons: (rayonsRes?._fromBackend ? rayonsRes.rayons : null) || offlineSnapshot.rayons || [],
+        categorials: (catRes?._fromBackend ? catRes.categorials : null) || offlineSnapshot.categorials || [],
+        staff: (staffRes?._fromBackend ? staffRes.staff : null) || offlineSnapshot.staff || [],
+        baptisms: (sacramentsRes?._fromBackend ? sacramentsRes.baptisms : null) || offlineSnapshot.baptisms || [],
+        confirmations: (sacramentsRes?._fromBackend ? sacramentsRes.confirmations : null) || offlineSnapshot.confirmations || [],
+        marriages: (sacramentsRes?._fromBackend ? sacramentsRes.marriages : null) || offlineSnapshot.marriages || [],
+        mutations: (mutationsRes?._fromBackend ? mutationsRes.mutations : null) || offlineSnapshot.mutations || [],
+        events: resolvedEvents,
+        schedules: resolvedSchedules,
+        attendance: (attendanceRes?._fromBackend ? attendanceRes.attendance : null) || offlineSnapshot.attendance || [],
+        transactions: resolvedTransactions,
+        documents: (docsRes?._fromBackend ? docsRes.documents : null) || offlineSnapshot.documents || [],
+        announcements: resolvedAnnouncements,
+        corrections: (correctionsRes?._fromBackend ? correctionsRes.corrections : null) || offlineSnapshot.corrections || [],
+        auditLogs: (auditRes?._fromBackend ? auditRes.logs : null) || offlineSnapshot.auditLogs || [],
+        churchSettings: (settingsRes?._fromBackend ? settingsRes.settings : null) || offlineSnapshot.churchSettings || churchSettings,
       });
 
     } catch (err) {
@@ -431,9 +546,8 @@ export default function App() {
   // Offline Sync execution handler
   const handleSyncOffline = async () => {
     if (syncingOffline) return;
-    const queue = getOfflineMembersQueue();
-    const photoCount = Object.keys(getOfflineMemberPhotos()).length;
-    if (queue.length === 0 && photoCount === 0) {
+    const totalPending = getTotalPendingOfflineCount();
+    if (totalPending === 0) {
       setSyncToast({ message: 'Semua data offline sudah tersinkronkan dengan server.', type: 'info' });
       return;
     }
@@ -443,17 +557,20 @@ export default function App() {
     }
 
     setSyncingOffline(true);
-    setSyncToast({ message: `Menyinkronkan ${queue.length} data jemaat dan ${photoCount} foto...`, type: 'info' });
+    setSyncToast({ message: `Menyinkronkan ${totalPending} perubahan data offline...`, type: 'info' });
     try {
       const result = await syncOfflineQueueToServer(api.createMemberApi);
+      const universalResult = await syncUniversalOfflineMutations(universalSyncHandlers);
       const photoResult = await syncOfflineMemberPhotos(api.updateMemberPhotoApi);
-      setPendingOfflineCount(getOfflineMembersQueue().length);
+      await syncPendingActivityImages();
+      setPendingOfflineCount(getTotalPendingOfflineCount());
       await loadAllData();
-      const failed = result.failedCount + photoResult.remainingCount;
+      const synced = result.syncedCount + universalResult.syncedCount + photoResult.syncedCount;
+      const failed = result.failedCount + universalResult.failedCount + photoResult.remainingCount;
       setSyncToast({
         message: failed > 0
-          ? `Sinkronisasi selesai sebagian; ${failed} item masih tertunda dan akan dicoba lagi.`
-          : `Berhasil menyinkronkan ${result.syncedCount + photoResult.syncedCount} item offline ke server.`,
+          ? `Sinkronisasi selesai sebagian (${synced} berhasil, ${failed} menunggu server aktif).`
+          : `Berhasil menyinkronkan ${synced} item offline ke server.`,
         type: failed > 0 ? 'info' : 'success',
       });
     } catch (err: any) {
@@ -463,39 +580,57 @@ export default function App() {
     }
   };
 
-  // Listen for online / offline window events & auto-sync
+  // Listen for online / offline / tab visibility & periodic background auto-sync
   useEffect(() => {
+    const triggerBackgroundSync = () => {
+      setIsOnline(navigator.onLine);
+      if (!navigator.onLine) return;
+      void syncPendingActivityImages();
+      if (getTotalPendingOfflineCount() > 0) {
+        void handleSyncOffline();
+      }
+    };
+
     const handleOnlineEvent = () => {
       setIsOnline(true);
-      // Activity photos have their own idempotent retry queue and must sync
-      // even when there are no pending member records.
-      void syncPendingActivityImages();
       setSyncToast({
-        message: 'Koneksi internet terhubung kembali! Memulai sinkronisasi data offline...',
+        message: 'Koneksi internet terhubung kembali! Menyinkronkan data perangkat...',
         type: 'success',
       });
-      const pending = getOfflineMembersQueue();
-      if (pending.length > 0 || Object.keys(getOfflineMemberPhotos()).length > 0) {
-        handleSyncOffline();
-      }
+      triggerBackgroundSync();
     };
 
     const handleOfflineEvent = () => {
       setIsOnline(false);
       setSyncToast({
-        message: 'Koneksi internet terputus. Mode offline aktif — pendaftaran jemaat tetap dapat dilakukan dan tersimpan aman di perangkat.',
+        message: 'Koneksi internet terputus. Mode offline aktif — seluruh input & edit tetap tersimpan aman di perangkat.',
         type: 'info',
       });
     };
 
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible' && navigator.onLine) {
+        triggerBackgroundSync();
+      }
+    };
+
     window.addEventListener('online', handleOnlineEvent);
     window.addEventListener('offline', handleOfflineEvent);
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    const intervalId = window.setInterval(() => {
+      if (navigator.onLine && getTotalPendingOfflineCount() > 0 && currentUser) {
+        void handleSyncOffline();
+      }
+    }, 45_000);
 
     return () => {
       window.removeEventListener('online', handleOnlineEvent);
       window.removeEventListener('offline', handleOfflineEvent);
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.clearInterval(intervalId);
     };
-  }, []);
+  }, [currentUser?.id]);
 
   // Auto-dismiss toast notification after 6 seconds
   useEffect(() => {
@@ -513,7 +648,47 @@ export default function App() {
     return () => window.removeEventListener('gmp-quota-exceeded', handleQuota);
   }, []);
 
-  // Member CRUD handlers with Automatic Direct-Save & Persistence
+  // Helper to persist optimistic local cache + recomputed live stats during offline/static fallback
+  const updateOfflineSnapshotSlice = (patch: {
+    members?: Member[];
+    families?: Family[];
+    transactions?: FinancialTransaction[];
+    events?: ChurchEvent[];
+    schedules?: ServiceSchedule[];
+    announcements?: Announcement[];
+    attendance?: AttendanceRecord[];
+  }) => {
+    const nextMembers = patch.members ?? members;
+    const nextFamilies = patch.families ?? families;
+    const nextTransactions = patch.transactions ?? transactions;
+    const nextEvents = patch.events ?? events;
+    const nextSchedules = patch.schedules ?? schedules;
+    const nextAnnouncements = patch.announcements ?? announcements;
+    const nextAttendance = patch.attendance ?? attendance;
+
+    const recomputedStats = {
+      ...calculateChurchStats(nextMembers, nextFamilies, nextTransactions),
+      upcomingEvents: nextEvents.slice(0, 5),
+      nextService: nextSchedules[0] || null,
+    };
+    setStats(recomputedStats);
+
+    const existing = getOfflineDataSnapshot() || {};
+    cacheOfflineDataSnapshot({
+      ...existing,
+      stats: recomputedStats,
+      members: nextMembers,
+      families: nextFamilies,
+      transactions: nextTransactions,
+      events: nextEvents,
+      schedules: nextSchedules,
+      announcements: nextAnnouncements,
+      attendance: nextAttendance,
+    });
+    setPendingOfflineCount(getTotalPendingOfflineCount());
+  };
+
+  // Member CRUD handlers with Automatic Direct-Save, Firestore Mirroring & Universal Offline Queue
   const handleSaveMember = async (data: Partial<Member>) => {
     try {
       if (editingMember) {
@@ -521,6 +696,7 @@ export default function App() {
         if (res && res.success === false) {
           throw new Error(res.message || 'Gagal memperbarui jemaat di server');
         }
+        void mirrorDocToFirestore('members', editingMember.id, { ...editingMember, ...data });
         setSyncToast({
           message: `Data jemaat "${data.fullName}" berhasil diperbarui di database.`,
           type: 'success',
@@ -528,11 +704,13 @@ export default function App() {
       } else {
         const res = await api.createMemberApi(data);
         if (res && res.success) {
+          if (res.member) {
+            void mirrorDocToFirestore('members', res.member.id, res.member);
+          }
           setSyncToast({
             message: `Jemaat "${data.fullName}" (${res.memberNo || 'Baru'}) berhasil disimpan ke database.`,
             type: 'success',
           });
-          // Immediately update state and persistent local cache
           if (res.member) {
             const newMember = res.member;
             setMembers((prev) => {
@@ -549,25 +727,48 @@ export default function App() {
       setShowMemberFormModal(false);
       setEditingMember(null);
     } catch (err: any) {
-      console.warn('Gagal menyimpan langsung ke server, mencadangkan ke antrean offline:', err);
-      const isOfflineFailure = !navigator.onLine || err instanceof TypeError;
-      if (!editingMember && isOfflineFailure) {
-        const optimistic = addMemberToOfflineQueue(data);
-        setMembers((prev) => {
-          const updated = [optimistic, ...prev.filter((m) => m.id !== optimistic.id)];
-          cacheMembersLocally(updated);
-          return updated;
-        });
-        setPendingOfflineCount(getOfflineMembersQueue().length);
-        setSyncToast({
-          message: `Data jemaat "${data.fullName || 'Baru'}" aman tersimpan di penyimpanan lokal dan akan disinkronkan saat terhubung ke server.`,
-          type: 'info',
-        });
+      console.warn('Gagal menyimpan langsung ke server, memeriksa mode offline:', err);
+      if (api.isOfflineOrStaticError(err)) {
+        if (editingMember) {
+          const updatedRecord: Member = {
+            ...editingMember,
+            ...data,
+            updatedAt: new Date().toISOString(),
+            isOfflinePending: true,
+          };
+          enqueueUniversalOfflineMutation({
+            entity: 'member',
+            action: 'update',
+            targetId: editingMember.id,
+            payload: data,
+            label: updatedRecord.fullName,
+          });
+          void mirrorDocToFirestore('members', editingMember.id, updatedRecord);
+          const nextMembers = members.map((m) => (m.id === editingMember.id ? updatedRecord : m));
+          setMembers(nextMembers);
+          cacheMembersLocally(nextMembers);
+          updateOfflineSnapshotSlice({ members: nextMembers });
+          setSyncToast({
+            message: `Perubahan "${updatedRecord.fullName}" tersimpan lokal & akan tersinkron otomatis saat server terhubung.`,
+            type: 'info',
+          });
+        } else {
+          const optimistic = addMemberToOfflineQueue(data);
+          void mirrorDocToFirestore('members', optimistic.id, optimistic);
+          const nextMembers = [optimistic, ...members.filter((m) => m.id !== optimistic.id)];
+          setMembers(nextMembers);
+          cacheMembersLocally(nextMembers);
+          updateOfflineSnapshotSlice({ members: nextMembers });
+          setSyncToast({
+            message: `Data jemaat "${data.fullName || 'Baru'}" aman tersimpan di perangkat dan akan disinkronkan saat terhubung.`,
+            type: 'info',
+          });
+        }
         setShowMemberFormModal(false);
         setEditingMember(null);
       } else {
         setSyncToast({
-          message: `${editingMember ? 'Gagal memperbarui' : 'Gagal menyimpan'} jemaat: ${err?.message || 'Periksa koneksi jaringan server.'}`,
+          message: `${editingMember ? 'Gagal memperbarui' : 'Gagal menyimpan'} jemaat: ${err?.message || 'Periksa isian data Anda.'}`,
           type: 'error',
         });
       }
@@ -575,8 +776,31 @@ export default function App() {
   };
 
   const handleDeleteMember = async (id: string) => {
-    await api.deleteMemberApi(id);
-    await loadAllData();
+    try {
+      await api.deleteMemberApi(id);
+      void removeDocFromFirestore('members', id);
+      await loadAllData();
+    } catch (err: any) {
+      if (api.isOfflineOrStaticError(err)) {
+        enqueueUniversalOfflineMutation({
+          entity: 'member',
+          action: 'delete',
+          targetId: id,
+          label: 'Hapus Jemaat',
+        });
+        void removeDocFromFirestore('members', id);
+        const nextMembers = members.filter((m) => m.id !== id);
+        setMembers(nextMembers);
+        cacheMembersLocally(nextMembers);
+        updateOfflineSnapshotSlice({ members: nextMembers });
+        setSyncToast({
+          message: 'Penghapusan jemaat dicatat lokal & akan disinkronkan otomatis saat server terhubung.',
+          type: 'info',
+        });
+      } else {
+        setSyncToast({ message: `Gagal menghapus jemaat: ${err?.message || 'Error'}`, type: 'error' });
+      }
+    }
   };
 
   // Direct Photo Update Handler for KAJ Cards (API database + offline retry)
@@ -637,30 +861,92 @@ export default function App() {
     }
   };
 
-  // Family CRUD handlers
+  // Family CRUD handlers with Offline & Firestore sync
   const handleSaveFamily = async (data: Partial<Family>) => {
-    if (editingFamily || data.id) {
-      const famId = editingFamily?.id || data.id!;
-      await api.updateFamilyApi(famId, data);
-      setSyncToast({
-        message: `Data Kartu Keluarga "${data.headOfFamilyName}" berhasil diperbarui di database.`,
-        type: 'success',
-      });
-    } else {
-      await api.createFamilyApi(data);
-      setSyncToast({
-        message: `Kartu Keluarga baru "${data.headOfFamilyName}" berhasil disimpan ke database.`,
-        type: 'success',
-      });
+    const famId = editingFamily?.id || data.id;
+    try {
+      if (famId) {
+        await api.updateFamilyApi(famId, data);
+        void mirrorDocToFirestore('families', famId, { ...editingFamily, ...data, id: famId });
+        setSyncToast({
+          message: `Data Kartu Keluarga "${data.headOfFamilyName}" berhasil diperbarui di database.`,
+          type: 'success',
+        });
+      } else {
+        const res = await api.createFamilyApi(data);
+        if (res?.id) void mirrorDocToFirestore('families', res.id, { ...data, id: res.id });
+        setSyncToast({
+          message: `Kartu Keluarga baru "${data.headOfFamilyName}" berhasil disimpan ke database.`,
+          type: 'success',
+        });
+      }
+      setEditingFamily(null);
+      setShowFamilyModal(false);
+      await loadAllData();
+    } catch (err: any) {
+      if (api.isOfflineOrStaticError(err)) {
+        if (famId) {
+          enqueueUniversalOfflineMutation({
+            entity: 'family',
+            action: 'update',
+            targetId: famId,
+            payload: data,
+            label: data.headOfFamilyName || 'Kartu Keluarga',
+          });
+          const nextFamilies = families.map((f) => (f.id === famId ? { ...f, ...data } : f));
+          setFamilies(nextFamilies);
+          updateOfflineSnapshotSlice({ families: nextFamilies });
+        } else {
+          const tempId = `offline-fam-${Date.now()}`;
+          const newFam: Family = {
+            id: tempId,
+            familyNo: data.familyNo || `KK-OFF-${Math.floor(100 + Math.random() * 899)}`,
+            headOfFamilyName: data.headOfFamilyName || '',
+            address: data.address || '',
+            rayonId: data.rayonId || 'r1',
+            rayonName: data.rayonName || 'Rayon I',
+            phone: data.phone || '',
+            notes: data.notes || '',
+            memberCount: 0,
+            createdAt: new Date().toISOString(),
+          };
+          enqueueUniversalOfflineMutation({
+            entity: 'family',
+            action: 'create',
+            targetId: tempId,
+            payload: data,
+            label: newFam.headOfFamilyName,
+          });
+          const nextFamilies = [newFam, ...families];
+          setFamilies(nextFamilies);
+          updateOfflineSnapshotSlice({ families: nextFamilies });
+        }
+        setEditingFamily(null);
+        setShowFamilyModal(false);
+        setSyncToast({
+          message: `Kartu Keluarga "${data.headOfFamilyName}" disimpan lokal & akan tersinkron otomatis.`,
+          type: 'info',
+        });
+      } else {
+        setSyncToast({ message: `Gagal menyimpan KK: ${err?.message || 'Error'}`, type: 'error' });
+      }
     }
-    setEditingFamily(null);
-    setShowFamilyModal(false);
-    await loadAllData();
   };
 
   const handleDeleteFamily = async (id: string) => {
-    await api.deleteFamilyApi(id);
-    await loadAllData();
+    try {
+      await api.deleteFamilyApi(id);
+      void removeDocFromFirestore('families', id);
+      await loadAllData();
+    } catch (err: any) {
+      if (api.isOfflineOrStaticError(err)) {
+        enqueueUniversalOfflineMutation({ entity: 'family', action: 'delete', targetId: id, label: 'Hapus KK' });
+        const nextFamilies = families.filter((f) => f.id !== id);
+        setFamilies(nextFamilies);
+        updateOfflineSnapshotSlice({ families: nextFamilies });
+        setSyncToast({ message: 'Penghapusan KK disimpan lokal & siap disinkronkan.', type: 'info' });
+      }
+    }
   };
 
   // Church Staff (Majelis, Pendeta, dan Pengajar) CRUD through the API database.
@@ -751,35 +1037,86 @@ export default function App() {
     await loadAllData();
   };
 
-  // Event and service schedule handlers use the same durable API database.
+  // Event, schedule, attendance, finance & announcement handlers with Offline Queue & Firestore Sync
+  const runOfflineResilientMutation = async (
+    entity: OfflineMutationEntity,
+    action: 'create' | 'update' | 'delete',
+    label: string,
+    remoteCall: () => Promise<any>,
+    onOfflineOptimistic: () => void,
+    targetId?: string,
+    payload?: any
+  ) => {
+    try {
+      const res = await remoteCall();
+      if (entity === 'event' || entity === 'schedule' || entity === 'announcement' || entity === 'finance') {
+        const col = entity === 'finance' ? 'financial_transactions' : (`${entity}s` as any);
+        if (action === 'delete' && targetId) void removeDocFromFirestore(col, targetId);
+        else if (res?.id || targetId) void mirrorDocToFirestore(col, res?.id || targetId!, { ...payload, id: res?.id || targetId });
+      }
+      await loadAllData();
+    } catch (err: any) {
+      if (api.isOfflineOrStaticError(err)) {
+        enqueueUniversalOfflineMutation({ entity, action, targetId, payload, label });
+        onOfflineOptimistic();
+        setSyncToast({
+          message: `Perubahan "${label}" tersimpan lokal & otomatis tersinkron saat server terhubung.`,
+          type: 'info',
+        });
+      } else {
+        setSyncToast({ message: `Gagal memproses ${label}: ${err?.message || 'Error'}`, type: 'error' });
+      }
+    }
+  };
+
   const handleAddEvent = async (data: Partial<ChurchEvent>) => {
-    await api.createEventApi(data);
-    await loadAllData();
+    const tempId = `offline-ev-${Date.now()}`;
+    await runOfflineResilientMutation('event', 'create', data.title || 'Kegiatan', () => api.createEventApi(data), () => {
+      const next = [{ ...(data as ChurchEvent), id: tempId }, ...events];
+      setEvents(next);
+      updateOfflineSnapshotSlice({ events: next });
+    }, tempId, data);
   };
 
   const handleUpdateEvent = async (id: string, data: Partial<ChurchEvent>) => {
-    await api.updateEventApi(id, data);
-    await loadAllData();
+    await runOfflineResilientMutation('event', 'update', data.title || 'Kegiatan', () => api.updateEventApi(id, data), () => {
+      const next = events.map((e) => (e.id === id ? { ...e, ...data } : e));
+      setEvents(next);
+      updateOfflineSnapshotSlice({ events: next });
+    }, id, data);
   };
 
   const handleDeleteEvent = async (id: string) => {
-    await api.deleteEventApi(id);
-    await loadAllData();
+    await runOfflineResilientMutation('event', 'delete', 'Hapus Kegiatan', () => api.deleteEventApi(id), () => {
+      const next = events.filter((e) => e.id !== id);
+      setEvents(next);
+      updateOfflineSnapshotSlice({ events: next });
+    }, id);
   };
 
   const handleAddSchedule = async (data: Partial<ServiceSchedule>) => {
-    await api.createScheduleApi(data);
-    await loadAllData();
+    const tempId = `offline-sch-${Date.now()}`;
+    await runOfflineResilientMutation('schedule', 'create', data.serviceName || 'Jadwal Ibadah', () => api.createScheduleApi(data), () => {
+      const next = [{ ...(data as ServiceSchedule), id: tempId }, ...schedules];
+      setSchedules(next);
+      updateOfflineSnapshotSlice({ schedules: next });
+    }, tempId, data);
   };
 
   const handleUpdateSchedule = async (id: string, data: Partial<ServiceSchedule>) => {
-    await api.updateScheduleApi(id, data);
-    await loadAllData();
+    await runOfflineResilientMutation('schedule', 'update', data.serviceName || 'Jadwal Ibadah', () => api.updateScheduleApi(id, data), () => {
+      const next = schedules.map((s) => (s.id === id ? { ...s, ...data } : s));
+      setSchedules(next);
+      updateOfflineSnapshotSlice({ schedules: next });
+    }, id, data);
   };
 
   const handleDeleteSchedule = async (id: string) => {
-    await api.deleteScheduleApi(id);
-    await loadAllData();
+    await runOfflineResilientMutation('schedule', 'delete', 'Hapus Jadwal', () => api.deleteScheduleApi(id), () => {
+      const next = schedules.filter((s) => s.id !== id);
+      setSchedules(next);
+      updateOfflineSnapshotSlice({ schedules: next });
+    }, id);
   };
 
   const handleClearAllSchedules = async () => {
@@ -789,8 +1126,12 @@ export default function App() {
 
   // Attendance handler
   const handleAddAttendance = async (data: Partial<AttendanceRecord>) => {
-    await api.createAttendanceApi(data);
-    await loadAllData();
+    const tempId = `offline-att-${Date.now()}`;
+    await runOfflineResilientMutation('attendance', 'create', 'Presensi Ibadah', () => api.createAttendanceApi(data), () => {
+      const next = [{ ...(data as AttendanceRecord), id: tempId }, ...attendance];
+      setAttendance(next);
+      updateOfflineSnapshotSlice({ attendance: next });
+    }, tempId, data);
   };
 
   const handleUpdateAttendance = async (id: string, data: Partial<AttendanceRecord>) => {
@@ -799,24 +1140,37 @@ export default function App() {
   };
 
   const handleDeleteAttendance = async (id: string) => {
-    await adminApi.deleteAttendanceApi(id);
-    await loadAllData();
+    await runOfflineResilientMutation('attendance', 'delete', 'Hapus Presensi', () => adminApi.deleteAttendanceApi(id), () => {
+      const next = attendance.filter((a) => a.id !== id);
+      setAttendance(next);
+      updateOfflineSnapshotSlice({ attendance: next });
+    }, id);
   };
 
   // Finance handler
   const handleAddFinance = async (data: Partial<FinancialTransaction>) => {
-    await api.createFinanceApi(data);
-    await loadAllData();
+    const tempId = `offline-fin-${Date.now()}`;
+    await runOfflineResilientMutation('finance', 'create', data.description || 'Transaksi Kas', () => api.createFinanceApi(data), () => {
+      const next = [{ ...(data as FinancialTransaction), id: tempId }, ...transactions];
+      setTransactions(next);
+      updateOfflineSnapshotSlice({ transactions: next });
+    }, tempId, data);
   };
 
   const handleDeleteFinance = async (id: string) => {
-    await api.deleteFinanceApi(id);
-    await loadAllData();
+    await runOfflineResilientMutation('finance', 'delete', 'Hapus Transaksi', () => api.deleteFinanceApi(id), () => {
+      const next = transactions.filter((t) => t.id !== id);
+      setTransactions(next);
+      updateOfflineSnapshotSlice({ transactions: next });
+    }, id);
   };
 
   const handleUpdateFinance = async (id: string, data: Partial<FinancialTransaction>) => {
-    await adminApi.updateFinanceApi(id, data);
-    await loadAllData();
+    await runOfflineResilientMutation('finance', 'update', data.description || 'Transaksi Kas', () => adminApi.updateFinanceApi(id, data), () => {
+      const next = transactions.map((t) => (t.id === id ? { ...t, ...data } : t));
+      setTransactions(next);
+      updateOfflineSnapshotSlice({ transactions: next });
+    }, id, data);
   };
 
   // Document handler
@@ -842,20 +1196,30 @@ export default function App() {
     await loadAllData();
   };
 
-  // Announcement (Warta Jemaat) handlers use the API database only.
+  // Announcement (Warta Jemaat) handlers
   const handleAddAnnouncement = async (data: Partial<Announcement>) => {
-    await api.createAnnouncementApi(data);
-    await loadAllData();
+    const tempId = `offline-ann-${Date.now()}`;
+    await runOfflineResilientMutation('announcement', 'create', data.title || 'Warta Jemaat', () => api.createAnnouncementApi(data), () => {
+      const next = [{ ...(data as Announcement), id: tempId }, ...announcements];
+      setAnnouncements(next);
+      updateOfflineSnapshotSlice({ announcements: next });
+    }, tempId, data);
   };
 
   const handleUpdateAnnouncement = async (id: string, data: Partial<Announcement>) => {
-    await api.updateAnnouncementApi(id, data);
-    await loadAllData();
+    await runOfflineResilientMutation('announcement', 'update', data.title || 'Warta Jemaat', () => api.updateAnnouncementApi(id, data), () => {
+      const next = announcements.map((a) => (a.id === id ? { ...a, ...data } : a));
+      setAnnouncements(next);
+      updateOfflineSnapshotSlice({ announcements: next });
+    }, id, data);
   };
 
   const handleDeleteAnnouncement = async (id: string) => {
-    await api.deleteAnnouncementApi(id);
-    await loadAllData();
+    await runOfflineResilientMutation('announcement', 'delete', 'Hapus Warta', () => api.deleteAnnouncementApi(id), () => {
+      const next = announcements.filter((a) => a.id !== id);
+      setAnnouncements(next);
+      updateOfflineSnapshotSlice({ announcements: next });
+    }, id);
   };
 
   // Correction request handler
@@ -964,7 +1328,7 @@ export default function App() {
   }
 
   return (
-    <div className="chroma-app min-h-screen text-slate-100 flex flex-col font-sans">
+    <div className="chroma-app min-h-screen text-slate-100 flex flex-col font-sans overflow-x-hidden">
       <div className="chroma-ribbon" aria-hidden="true" />
       {mapsQuotaExceeded && (
         <div className="bg-amber-50 border-b border-amber-200 text-amber-900 px-4 py-2.5 text-xs md:text-sm text-center sticky top-0 z-50 shadow-sm">
@@ -1423,6 +1787,10 @@ export default function App() {
         onClose={() => setShowImportModal(false)}
         onImport={handleImportMembers}
         onClearExistingMembers={handleClearAllMembers}
+        onGoToMembers={() => {
+          setShowImportModal(false);
+          setCurrentView('members');
+        }}
         rayons={rayons}
         categorials={categorials}
         families={families}

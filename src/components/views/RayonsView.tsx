@@ -1,5 +1,29 @@
-import React, { useEffect, useState } from 'react';
-import { MapPin, Users, Layers, Edit2, Trash2, Plus, X, Save, Phone } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  MapPin,
+  Users,
+  Layers,
+  Edit2,
+  Trash2,
+  Plus,
+  X,
+  Save,
+  Phone,
+  BarChart3,
+  PieChart as PieChartIcon,
+} from 'lucide-react';
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  PieChart,
+  Pie,
+  Cell,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip as RechartsTooltip,
+} from 'recharts';
 import type { Rayon, CategorialGroup, Member } from '../../types/index.ts';
 
 interface RayonsViewProps {
@@ -19,6 +43,8 @@ type ManagerKind = 'rayon' | 'categorial';
 type ManagerState = { kind: ManagerKind; item?: Rayon | CategorialGroup } | null;
 
 const RayonMapPicker = React.lazy(() => import('../RayonMapPicker.tsx'));
+
+const RAYON_PALETTE = ['#22d3ee', '#f59e0b', '#10b981', '#a855f7', '#38bdf8', '#f472b6', '#84cc16', '#fb7185'];
 
 const emptyForm = {
   code: '', name: '', leaderName: '', leaderPhone: '', coverageArea: '', notes: '', targetAgeDesc: '', coordinator: '',
@@ -40,6 +66,7 @@ export const RayonsView: React.FC<RayonsViewProps> = ({
   const [activeTab, setActiveTab] = useState<'rayons' | 'categorials'>(initialTab);
   const [selectedRayonId, setSelectedRayonId] = useState<string>(rayons[0]?.id || 'r1');
   const [selectedCatId, setSelectedCatId] = useState<string>(categorials[0]?.id || 'c1');
+  const [chartMode, setChartMode] = useState<'bar' | 'donut'>('bar');
   const [manager, setManager] = useState<ManagerState>(null);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
@@ -47,10 +74,50 @@ export const RayonsView: React.FC<RayonsViewProps> = ({
 
   useEffect(() => setActiveTab(initialTab), [initialTab]);
 
+  useEffect(() => {
+    if (rayons.length > 0 && !rayons.some((r) => r.id === selectedRayonId)) {
+      setSelectedRayonId(rayons[0].id);
+    }
+  }, [rayons, selectedRayonId]);
+
   const selectedRayon = rayons.find((r) => r.id === selectedRayonId) || rayons[0];
   const rayonMembers = members.filter((m) => m.rayonId === selectedRayon?.id);
   const selectedCat = categorials.find((c) => c.id === selectedCatId) || categorials[0];
   const catMembers = members.filter((m) => m.categorialGroupId === selectedCat?.id);
+
+  const rayonDistribution = useMemo(() => {
+    const total = members.length;
+    return rayons.map((r, idx) => {
+      const list = members.filter((m) => m.rayonId === r.id);
+      const male = list.filter((m) => m.gender === 'Laki-laki').length;
+      const female = list.filter((m) => m.gender === 'Perempuan').length;
+      const active = list.filter((m) => m.status === 'Aktif').length;
+      const count = list.length;
+      const percentage = total > 0 ? ((count / total) * 100).toFixed(1) : '0.0';
+      return {
+        id: r.id,
+        code: r.code,
+        name: r.name,
+        leaderName: r.leaderName || 'Belum diisi',
+        count,
+        active,
+        male,
+        female,
+        percentage,
+        color: RAYON_PALETTE[idx % RAYON_PALETTE.length],
+      };
+    });
+  }, [rayons, members]);
+
+  const totalMembersInRayons = useMemo(
+    () => rayonDistribution.reduce((acc, item) => acc + item.count, 0),
+    [rayonDistribution]
+  );
+
+  const topRayon = useMemo(() => {
+    if (rayonDistribution.length === 0) return null;
+    return rayonDistribution.reduce((max, cur) => (cur.count > max.count ? cur : max), rayonDistribution[0]);
+  }, [rayonDistribution]);
 
   const openManager = (kind: ManagerKind, item?: Rayon | CategorialGroup) => {
     setError('');
@@ -157,7 +224,263 @@ export const RayonsView: React.FC<RayonsViewProps> = ({
       {error && <div role="alert" className="p-3 rounded-xl bg-rose-950/70 border border-rose-400/40 text-rose-200 text-xs">{error}</div>}
 
       {activeTab === 'rayons' ? (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="space-y-6">
+          {/* Recharts Automatic Visualization: Member Distribution per Rayon */}
+          <div className="chroma-card p-5 rounded-2xl space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3.5">
+              <div>
+                <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                  <BarChart3 className="w-4 h-4 text-cyan-300 shrink-0" />
+                  <span>Visualisasi Sebaran Jumlah Jemaat per Rayon</span>
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Diperbarui otomatis dari database jemaat · Total{' '}
+                  <span className="font-mono font-bold text-cyan-300 tabular-nums">{totalMembersInRayons}</span> jiwa di{' '}
+                  <span className="font-mono font-bold text-white tabular-nums">{rayons.length}</span> rayon
+                  {topRayon && totalMembersInRayons > 0 && (
+                    <>
+                      {' '}· Terbanyak:{' '}
+                      <span className="font-semibold text-amber-300">
+                        {topRayon.name} ({topRayon.count} jiwa)
+                      </span>
+                    </>
+                  )}
+                </p>
+              </div>
+
+              <div className="flex items-center p-1 bg-slate-950/80 border border-slate-700 rounded-xl self-start sm:self-auto shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setChartMode('bar')}
+                  className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer ${
+                    chartMode === 'bar'
+                      ? 'bg-cyan-500 text-slate-950 shadow-sm'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <BarChart3 className="w-3.5 h-3.5" />
+                  <span>Grafik Batang</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setChartMode('donut')}
+                  className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer ${
+                    chartMode === 'donut'
+                      ? 'bg-cyan-500 text-slate-950 shadow-sm'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <PieChartIcon className="w-3.5 h-3.5" />
+                  <span>Proporsi (%)</span>
+                </button>
+              </div>
+            </div>
+
+            {rayons.length === 0 ? (
+              <div className="h-52 flex items-center justify-center text-xs text-slate-400 rounded-xl border border-dashed border-slate-800">
+                Belum ada rayon untuk divisualisasikan.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-center">
+                <div className="lg:col-span-7 h-64 w-full relative">
+                  {totalMembersInRayons === 0 && (
+                    <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-[#070b18]/65 backdrop-blur-[1px] rounded-xl text-center px-4 pointer-events-none">
+                      <Users className="w-6 h-6 text-slate-500 mb-1.5" />
+                      <div className="text-xs font-semibold text-slate-300">Belum ada data jemaat terdaftar</div>
+                      <div className="text-[11px] text-slate-400 mt-0.5">
+                        Grafik akan terisi otomatis setelah jemaat ditambahkan atau diimpor dari Excel.
+                      </div>
+                    </div>
+                  )}
+
+                  {chartMode === 'bar' ? (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={rayonDistribution} margin={{ top: 12, right: 16, left: -12, bottom: 4 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+                        <XAxis
+                          dataKey="name"
+                          stroke="#94a3b8"
+                          fontSize={11}
+                          tickLine={false}
+                          axisLine={{ stroke: '#334155' }}
+                        />
+                        <YAxis
+                          stroke="#94a3b8"
+                          fontSize={11}
+                          tickLine={false}
+                          axisLine={{ stroke: '#334155' }}
+                          allowDecimals={false}
+                        />
+                        <RechartsTooltip
+                          cursor={{ fill: 'rgba(34, 211, 238, 0.08)' }}
+                          content={({ active, payload }) => {
+                            if (active && payload && payload.length) {
+                              const item = payload[0].payload;
+                              return (
+                                <div className="bg-[#0b1226]/95 border border-cyan-500/40 p-3 rounded-xl shadow-2xl backdrop-blur-md text-xs space-y-1 min-w-[175px]">
+                                  <div className="font-bold text-white flex items-center justify-between gap-3 border-b border-slate-800 pb-1">
+                                    <span>{item.name}</span>
+                                    <span className="font-mono text-[10px] text-cyan-300">{item.code}</span>
+                                  </div>
+                                  <div className="text-[11px] text-slate-400 truncate">{item.leaderName}</div>
+                                  <div className="font-mono font-bold text-sm text-cyan-300 tabular-nums pt-0.5">
+                                    {item.count} Jiwa{' '}
+                                    <span className="text-xs font-normal text-slate-300">({item.percentage}%)</span>
+                                  </div>
+                                  <div className="text-[11px] text-slate-400 flex items-center gap-2 pt-1 border-t border-slate-800/80 font-mono tabular-nums">
+                                    <span>L: {item.male}</span>
+                                    <span>·</span>
+                                    <span>P: {item.female}</span>
+                                    <span>·</span>
+                                    <span>Aktif: {item.active}</span>
+                                  </div>
+                                </div>
+                              );
+                            }
+                            return null;
+                          }}
+                        />
+                        <Bar
+                          dataKey="count"
+                          name="Jumlah Jemaat"
+                          radius={[6, 6, 0, 0]}
+                          maxBarSize={52}
+                          onClick={(data: any) => {
+                            if (data?.id) setSelectedRayonId(data.id);
+                          }}
+                          className="cursor-pointer"
+                        >
+                          {rayonDistribution.map((entry) => (
+                            <Cell
+                              key={`bar-${entry.id}`}
+                              fill={entry.color}
+                              fillOpacity={selectedRayon?.id === entry.id ? 1 : 0.65}
+                              stroke={selectedRayon?.id === entry.id ? '#ffffff' : 'none'}
+                              strokeWidth={selectedRayon?.id === entry.id ? 1.5 : 0}
+                            />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <RechartsTooltip
+                          content={({ active, payload }) => {
+                            if (active && payload && payload.length) {
+                              const item = payload[0].payload;
+                              return (
+                                <div className="bg-[#0b1226]/95 border border-cyan-500/40 p-3 rounded-xl shadow-2xl backdrop-blur-md text-xs space-y-1 min-w-[175px]">
+                                  <div className="font-bold text-white flex items-center justify-between gap-3 border-b border-slate-800 pb-1">
+                                    <span>{item.name}</span>
+                                    <span className="font-mono text-[10px] text-cyan-300">{item.code}</span>
+                                  </div>
+                                  <div className="font-mono font-bold text-sm text-cyan-300 tabular-nums pt-0.5">
+                                    {item.count} Jiwa{' '}
+                                    <span className="text-xs font-normal text-slate-300">({item.percentage}%)</span>
+                                  </div>
+                                  <div className="text-[11px] text-slate-400 flex items-center gap-2 pt-1 border-t border-slate-800/80 font-mono tabular-nums">
+                                    <span>L: {item.male}</span>
+                                    <span>·</span>
+                                    <span>P: {item.female}</span>
+                                  </div>
+                                </div>
+                              );
+                            }
+                            return null;
+                          }}
+                        />
+                        <Pie
+                          data={
+                            totalMembersInRayons > 0
+                              ? rayonDistribution
+                              : rayonDistribution.map((r) => ({ ...r, displayValue: 1 }))
+                          }
+                          dataKey={totalMembersInRayons > 0 ? 'count' : 'displayValue'}
+                          nameKey="name"
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={60}
+                          outerRadius={92}
+                          paddingAngle={3}
+                          stroke="#070b18"
+                          strokeWidth={2}
+                          onClick={(data: any) => {
+                            if (data?.id) setSelectedRayonId(data.id);
+                          }}
+                          className="cursor-pointer"
+                        >
+                          {rayonDistribution.map((entry) => (
+                            <Cell
+                              key={`pie-${entry.id}`}
+                              fill={totalMembersInRayons > 0 ? entry.color : '#1e293b'}
+                              fillOpacity={selectedRayon?.id === entry.id ? 1 : 0.72}
+                            />
+                          ))}
+                        </Pie>
+                      </PieChart>
+                    </ResponsiveContainer>
+                  )}
+
+                  {chartMode === 'donut' && totalMembersInRayons > 0 && (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none text-center">
+                      <span className="font-mono font-extrabold text-2xl text-white tabular-nums leading-none">
+                        {totalMembersInRayons}
+                      </span>
+                      <span className="text-[10px] text-cyan-300 font-semibold uppercase tracking-wider mt-1">
+                        Total Jiwa
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Clickable Rayon Distribution Breakdown */}
+                <div className="lg:col-span-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-2">
+                  {rayonDistribution.map((item) => {
+                    const isSelected = item.id === selectedRayon?.id;
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => setSelectedRayonId(item.id)}
+                        className={`w-full p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                          isSelected
+                            ? 'bg-cyan-500/15 border-cyan-400/70 text-white'
+                            : 'bg-[#070b18]/80 border-slate-800 hover:border-slate-700 text-slate-300'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span
+                              className="w-2.5 h-2.5 rounded-sm shrink-0"
+                              style={{ backgroundColor: item.color }}
+                            />
+                            <span className="font-semibold text-xs text-white truncate">{item.name}</span>
+                            <span className="text-[11px] text-slate-400 font-mono shrink-0">{item.code}</span>
+                          </div>
+                          <div className="text-right font-mono tabular-nums shrink-0">
+                            <span className="text-xs font-bold text-cyan-300">{item.count}</span>
+                            <span className="text-[11px] text-slate-400 ml-1">({item.percentage}%)</span>
+                          </div>
+                        </div>
+                        <div className="mt-2 h-1.5 w-full rounded-full bg-slate-900 overflow-hidden">
+                          <div
+                            className="h-full rounded-full transition-all duration-300"
+                            style={{
+                              width: `${Math.min(100, Number(item.percentage))}%`,
+                              backgroundColor: item.color,
+                            }}
+                          />
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-1 space-y-3">
             <h3 className="text-xs font-bold uppercase tracking-wider text-cyan-300 px-1">Daftar Rayon Pelayanan</h3>
             <div className="space-y-2">
@@ -218,6 +541,7 @@ export const RayonsView: React.FC<RayonsViewProps> = ({
               </>
             ) : <div className="p-10 text-center text-slate-400 text-sm">Pilih atau tambahkan rayon untuk melihat detail.</div>}
           </div>
+        </div>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">

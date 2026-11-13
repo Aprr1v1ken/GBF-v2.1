@@ -143,9 +143,21 @@ export const MemberFormModal: React.FC<MemberFormModalProps> = ({
     }
   };
 
+  const correctionMatch = String(member?.notes || '').match(/\[(?:⚠️\s*)?PERLU KOREKSI:\s*([^\]]+)\]/i);
+  const correctionReason =
+    correctionMatch?.[1]?.trim() ||
+    ((member?.fullName || '').includes('(Perlu Koreksi Nama)') ? 'Nama lengkap perlu diisi dengan benar' : '');
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.fullName || formData.fullName.trim().length < 2) {
+    const rawName = (formData.fullName || '').trim();
+    if (/^Jemaat Baris \d+\s*\(Perlu Koreksi Nama\)$/i.test(rawName)) {
+      setError('Silakan ganti nama sementara dengan nama lengkap jemaat yang sebenarnya.');
+      setActiveTab('diri');
+      return;
+    }
+    const cleanedName = rawName.replace(/\s*\(Perlu Koreksi Nama\)\s*/gi, '').trim();
+    if (cleanedName.length < 2) {
       setError('Nama lengkap wajib diisi minimal 2 karakter');
       setActiveTab('diri');
       return;
@@ -161,10 +173,18 @@ export const MemberFormModal: React.FC<MemberFormModalProps> = ({
       return;
     }
 
+    const cleanedNotes = String(formData.notes || '')
+      .replace(/\[(?:⚠️\s*)?PERLU KOREKSI:[^\]]*\]\s*/gi, '')
+      .trim();
+
     setError('');
     setSaving(true);
     try {
-      await onSave(formData);
+      await onSave({
+        ...formData,
+        fullName: cleanedName,
+        notes: cleanedNotes || 'Data telah diperiksa/diperbarui',
+      });
       onClose();
     } catch (err: any) {
       setError(err.message || 'Gagal menyimpan data');
@@ -220,6 +240,19 @@ export const MemberFormModal: React.FC<MemberFormModalProps> = ({
 
         {/* Form Body */}
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-4">
+          {correctionReason && (
+            <div className="p-3.5 rounded-xl bg-amber-950/50 border border-amber-500/40 text-amber-100 text-xs flex items-start gap-2.5">
+              <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <div className="font-bold text-amber-300">Data Hasil Impor Excel Memerlukan Koreksi</div>
+                <div className="text-amber-100/90 leading-relaxed">{correctionReason}</div>
+                <div className="text-[11px] text-slate-300">
+                  Perbaiki kolom yang sesuai lalu klik <strong>Simpan Data Jemaat</strong> — tanda koreksi akan hilang otomatis.
+                </div>
+              </div>
+            </div>
+          )}
+
           {error && (
             <div className="p-3 rounded-xl bg-red-950/60 border border-red-500/40 text-red-200 text-xs flex items-center gap-2">
               <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />

@@ -1,10 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import * as XLSX from 'xlsx';
 import {
   normalizeExcelDate,
   resolveRayon,
   resolveCategorial,
   createExcelTemplateWorkbook,
+  parseExcelOrCsvFile,
 } from '../src/utils/excel-import-export.ts';
 import type { Rayon, CategorialGroup } from '../src/types/index.ts';
 
@@ -23,11 +25,14 @@ const mockCategorials: CategorialGroup[] = [
   { id: 'c5', code: 'LANSIA', name: 'Persekutuan Usia Indah (Lansia)', targetAgeDesc: '60+', coordinator: '', memberCount: 0 },
 ];
 
-test('normalizeExcelDate handles YYYY-MM-DD, DD/MM/YYYY and empty values', () => {
+test('normalizeExcelDate handles YYYY-MM-DD, DD/MM/YYYY, empty values, and rejects invalid dates', () => {
   assert.equal(normalizeExcelDate(''), '');
   assert.equal(normalizeExcelDate('1985-04-12'), '1985-04-12');
   assert.equal(normalizeExcelDate('12/04/1985'), '1985-04-12');
   assert.equal(normalizeExcelDate('05-08-2010'), '2010-08-05');
+  assert.equal(normalizeExcelDate('bukan tanggal'), '');
+  assert.equal(normalizeExcelDate('32/13/2020'), '');
+  assert.equal(normalizeExcelDate('2021-02-30'), '');
 });
 
 test('resolveRayon correctly resolves Rayon I through IV by number, name, or code', () => {
@@ -57,4 +62,55 @@ test('createExcelTemplateWorkbook builds valid sheets with expected headers', ()
 
   const ws = wb.Sheets['DATA JEMAAT & KK'];
   assert.ok(ws);
+});
+
+test('parseExcelOrCsvFile retains malformed rows with PERLU KOREKSI tags and skips completely blank rows', async () => {
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.json_to_sheet([
+    {
+      No_KK: 'KK-01',
+      Nama_Lengkap: 'Yohanes Tefa',
+      Jenis_Kelamin: 'Laki-laki',
+      Tanggal_Lahir: '1985-05-10',
+      NIK: '5305011005850001',
+      Rayon: 'Rayon I',
+    },
+    {
+      No_KK: '',
+      Nama_Lengkap: '',
+      Jenis_Kelamin: '',
+      Tanggal_Lahir: '',
+      NIK: '',
+      Rayon: '',
+    },
+    {
+      No_KK: 'KK-02',
+      Nama_Lengkap: '',
+      Jenis_Kelamin: 'Tidak Jelas',
+      Tanggal_Lahir: 'bukan-tanggal',
+      NIK: '12345',
+      Rayon: 'Rayon II',
+    },
+  ]);
+  XLSX.utils.book_append_sheet(wb, ws, 'DATA JEMAAT & KK');
+  const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+  const mockFile = {
+    arrayBuffer: async () => buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength),
+  } as unknown as File;
+
+  const parsed = await parseExcelOrCsvFile(mockFile, mockRayons, mockCategorials, []);
+  assert.equal(parsed.rows.length, 2);
+  assert.equal(parsed.totalValid, 1);
+  assert.equal(parsed.totalInvalid, 1);
+
+  assert.equal(parsed.rows[0].hasWarning, false);
+  assert.equal(parsed.rows[0].rayonId, 'r1');
+
+  const badRow = parsed.rows[1];
+  assert.equal(badRow.isValid, true);
+  assert.equal(badRow.hasWarning, true);
+  assert.equal(badRow.birthDate, '2000-01-01');
+  assert.match(badRow.fullName, /Perlu Koreksi Nama/);
+  assert.match(badRow.notes || '', /PERLU KOREKSI:/);
+  assert.ok(badRow.errors.length >= 3);
 });

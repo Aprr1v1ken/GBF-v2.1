@@ -25,6 +25,16 @@ export default defineConfig(() => {
           orientation: 'portrait-primary',
           start_url: '/',
           scope: '/',
+          categories: ['productivity', 'utilities'],
+          shortcuts: [
+            {
+              name: 'Dashboard & Piramida Usia',
+              short_name: 'Dashboard',
+              description: 'Buka ringkasan jemaat dan piramida usia GMIT Betel Fuimelang',
+              url: '/',
+              icons: [{ src: '/pwa-192x192.png', sizes: '192x192' }],
+            },
+          ],
           icons: [
             {
               src: '/pwa-192x192.png',
@@ -47,13 +57,17 @@ export default defineConfig(() => {
           ],
         },
         workbox: {
+          cleanupOutdatedCaches: true,
+          clientsClaim: true,
+          skipWaiting: true,
+          navigateFallbackDenylist: [/^\/api\//, /\.zip$/],
           maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
           globPatterns: ['**/*.{js,css,html,ico,png,svg,jpeg,jpg,woff,woff2}'],
           runtimeCaching: [
             {
               // Only public, aggregate/content endpoints are cacheable. Never
               // cache private member, finance, document, or audit responses.
-              urlPattern: /\/api\/(stats|events|schedules|announcements|rayons|categorials)$/i,
+              urlPattern: /\/api\/(stats|events|schedules|announcements|rayons|categorials|locations|settings\/church)$/i,
               handler: 'NetworkFirst',
               options: {
                 cacheName: 'gmit-public-api',

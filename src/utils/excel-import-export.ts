@@ -59,29 +59,49 @@ export interface DetectedFamilyGroup {
   isNew: boolean;
 }
 
+function isValidIsoDate(iso: string): boolean {
+  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return false;
+  const year = Number(m[1]);
+  const month = Number(m[2]);
+  const day = Number(m[3]);
+  if (year < 1900 || year > 2100 || month < 1 || month > 12 || day < 1 || day > 31) return false;
+  const dt = new Date(Date.UTC(year, month - 1, day));
+  return dt.getUTCFullYear() === year && dt.getUTCMonth() === month - 1 && dt.getUTCDate() === day;
+}
+
 /**
- * Normalizes date to YYYY-MM-DD format from Excel serial number or string
+ * Normalizes date to YYYY-MM-DD format from Excel serial number or string.
+ * Returns empty string if input cannot be parsed as a valid calendar date.
  */
 export function normalizeExcelDate(value: any): string {
   if (value === null || value === undefined || value === '') return '';
 
   // If number (Excel date serial)
   if (typeof value === 'number') {
-    // Excel base date offset
     const parsed = XLSX.SSF.parse_date_code(value);
-    if (parsed) {
+    if (parsed && parsed.y >= 1900 && parsed.y <= 2100) {
       const y = parsed.y;
       const m = String(parsed.m).padStart(2, '0');
       const d = String(parsed.d).padStart(2, '0');
-      return `${y}-${m}-${d}`;
+      const iso = `${y}-${m}-${d}`;
+      return isValidIsoDate(iso) ? iso : '';
     }
+    return '';
   }
 
   const str = String(value).trim();
   if (!str) return '';
 
-  // YYYY-MM-DD
-  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+  // YYYY-MM-DD or YYYY/MM/DD
+  const ymdMatch = str.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})$/);
+  if (ymdMatch) {
+    const y = ymdMatch[1];
+    const m = ymdMatch[2].padStart(2, '0');
+    const d = ymdMatch[3].padStart(2, '0');
+    const iso = `${y}-${m}-${d}`;
+    return isValidIsoDate(iso) ? iso : '';
+  }
 
   // DD/MM/YYYY or DD-MM-YYYY
   const dmyMatch = str.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
@@ -89,19 +109,23 @@ export function normalizeExcelDate(value: any): string {
     const d = dmyMatch[1].padStart(2, '0');
     const m = dmyMatch[2].padStart(2, '0');
     const y = dmyMatch[3];
-    return `${y}-${m}-${d}`;
+    const iso = `${y}-${m}-${d}`;
+    return isValidIsoDate(iso) ? iso : '';
   }
 
-  // MM/DD/YYYY or MM-DD-YYYY
-  const dateObj = new Date(str);
-  if (!isNaN(dateObj.getTime())) {
-    const y = dateObj.getFullYear();
-    const m = String(dateObj.getMonth() + 1).padStart(2, '0');
-    const d = String(dateObj.getDate()).padStart(2, '0');
-    return `${y}-${m}-${d}`;
+  // Fallback for textual dates (e.g. "12 Jan 1990"), reject bare numeric strings
+  if (!/^\d+$/.test(str)) {
+    const dateObj = new Date(str);
+    if (!isNaN(dateObj.getTime())) {
+      const y = dateObj.getFullYear();
+      const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+      const d = String(dateObj.getDate()).padStart(2, '0');
+      const iso = `${y}-${m}-${d}`;
+      return isValidIsoDate(iso) ? iso : '';
+    }
   }
 
-  return str;
+  return '';
 }
 
 /**
@@ -584,6 +608,10 @@ export async function parseExcelOrCsvFile(
   for (let i = 0; i < rawRows.length; i++) {
     const raw = rawRows[i];
 
+    // Skip completely blank formatting rows in Excel
+    const hasAnyValue = Object.values(raw).some((v) => String(v ?? '').trim() !== '');
+    if (!hasAnyValue) continue;
+
     // Build key map for flexible header matching
     const mapped: Record<string, any> = {};
     for (const key of Object.keys(raw)) {
@@ -614,10 +642,14 @@ export async function parseExcelOrCsvFile(
 
     let genderStr = String(getVal('Jenis_Kelamin', 'Gender', 'Kelamin', 'JK')).trim();
     let gender: 'Laki-laki' | 'Perempuan' = 'Laki-laki';
+    let genderInvalid = false;
     if (/perempuan|wanita|^p$|^w$/i.test(genderStr)) {
       gender = 'Perempuan';
+    } else if (/laki|pria|^l$/i.test(genderStr)) {
+      gender = 'Laki-laki';
     } else {
       gender = 'Laki-laki';
+      genderInvalid = true;
     }
 
     const rawBirthDate = getVal('Tanggal_Lahir', 'Tgl_Lahir', 'birthDate', 'Tanggal Lahir');
@@ -681,15 +713,35 @@ export async function parseExcelOrCsvFile(
       errors.push('Nama lengkap belum diisi / kurang dari 2 karakter');
     }
     if (!birthDate) {
-      errors.push('Tanggal lahir kosong atau format tidak sesuai');
+      const rawBdStr = String(rawBirthDate ?? '').trim();
+      errors.push(
+        rawBdStr
+          ? `Tanggal lahir tidak valid ("${rawBdStr}") — diisi sementara 2000-01-01`
+          : 'Tanggal lahir kosong — diisi sementara 2000-01-01'
+      );
     }
-    if (nik && nik.length > 0 && nik.length !== 16) {
-      errors.push(`NIK ${nik.length} digit (standar 16 digit)`);
+    if (genderInvalid) {
+      errors.push(
+        genderStr
+          ? `Jenis kelamin tidak dikenali ("${genderStr}") — diisi sementara Laki-laki`
+          : 'Jenis kelamin kosong — diisi sementara Laki-laki'
+      );
+    }
+    if (nik && nik.length > 0 && !/^\d{16}$/.test(nik)) {
+      errors.push(`NIK "${nik}" tidak valid (${nik.length} karakter, standar 16 digit angka)`);
+    }
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      errors.push(`Format email tidak valid ("${email}")`);
     }
 
     const hasWarning = errors.length > 0;
     // Safe fallbacks so the row can be cleanly saved into SQLite database without error
-    const safeFullName = fullName && fullName.length >= 2 ? fullName : (fullName ? `${fullName} (Perlu Koreksi Nama)` : `Jemaat Baris ${i + 1} (Perlu Koreksi Nama)`);
+    const safeFullName =
+      fullName && fullName.length >= 2
+        ? fullName
+        : fullName
+        ? `${fullName} (Perlu Koreksi Nama)`
+        : `Jemaat Baris ${i + 1} (Perlu Koreksi Nama)`;
     const safeBirthDate = birthDate || '2000-01-01';
 
     let finalNotes = rawNotes;
@@ -750,7 +802,7 @@ export async function parseExcelOrCsvFile(
 
       familiesMap.set(familyKey, {
         familyNo: familyCardNo || (existing ? existing.familyNo : `KK-BARU-${familiesMap.size + 1}`),
-        headOfFamilyName: headOfFamilyName || (familyRole === 'Kepala Keluarga' ? fullName : `Keluarga ${fullName}`),
+        headOfFamilyName: headOfFamilyName || (familyRole === 'Kepala Keluarga' ? safeFullName : `Keluarga ${safeFullName}`),
         address,
         rayonId: rayon.id,
         rayonName: rayon.name,
@@ -762,7 +814,7 @@ export async function parseExcelOrCsvFile(
       const group = familiesMap.get(familyKey)!;
       group.members.push(rowObj);
       if (familyRole === 'Kepala Keluarga') {
-        group.headOfFamilyName = fullName;
+        group.headOfFamilyName = safeFullName;
       }
     }
   }

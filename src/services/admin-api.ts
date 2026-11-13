@@ -1,4 +1,4 @@
-import { apiFetch } from './api.ts';
+import { apiFetch, parseMutationResponse } from './api.ts';
 import type {
   AttendanceRecord,
   CategorialGroup,
@@ -17,11 +17,7 @@ async function request(path: string, method: 'GET' | 'POST' | 'PUT' | 'DELETE', 
     headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
-  const payload = await res.json().catch(() => ({ success: false, message: 'Server mengembalikan respons yang tidak valid' }));
-  if (!res.ok || payload.success === false) {
-    throw new Error(payload.message || `Permintaan gagal (${res.status})`);
-  }
-  return payload;
+  return parseMutationResponse(res);
 }
 
 export const fetchUsersApi = () => request('/users', 'GET');

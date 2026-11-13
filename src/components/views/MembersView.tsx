@@ -61,11 +61,28 @@ export const MembersView: React.FC<MembersViewProps> = ({
   const [selectedRayon, setSelectedRayon] = useState('all');
   const [selectedCat, setSelectedCat] = useState('all');
   const [selectedStatus, setSelectedStatus] = useState('all');
+  const [onlyNeedsCorrection, setOnlyNeedsCorrection] = useState(false);
+
+  const getCorrectionReason = (member: Member): string | null => {
+    const notes = String(member.notes || '');
+    const match = notes.match(/\[(?:⚠️\s*)?PERLU KOREKSI:\s*([^\]]+)\]/i);
+    if (match) return match[1].trim();
+    if (notes.toUpperCase().includes('PERLU KOREKSI')) return 'Data hasil impor Excel perlu diperiksa ulang';
+    if ((member.fullName || '').includes('(Perlu Koreksi Nama)')) return 'Nama lengkap belum terisi dengan benar';
+    if (!member.birthDate || !/^\d{4}-\d{2}-\d{2}$/.test(member.birthDate)) return 'Tanggal lahir belum valid';
+    if (member.nik && member.nik.trim().length > 0 && !/^\d{16}$/.test(member.nik.trim())) {
+      return `NIK "${member.nik}" harus tepat 16 digit angka`;
+    }
+    return null;
+  };
+
+  const needsCorrectionCount = members.filter((m) => getCorrectionReason(m) !== null).length;
 
   const offlinePendingMembers = members.filter((m) => m.isOfflinePending);
   const offlinePendingCount = offlinePendingMembers.length;
 
   const filteredMembers = members.filter((m) => {
+    if (onlyNeedsCorrection && getCorrectionReason(m) === null) return false;
     if (selectedRayon !== 'all' && m.rayonId !== selectedRayon) return false;
     if (selectedCat !== 'all' && m.categorialGroupId !== selectedCat) return false;
     if (selectedStatus !== 'all' && m.status !== selectedStatus) return false;
@@ -157,6 +174,36 @@ export const MembersView: React.FC<MembersViewProps> = ({
               <span>{syncingOffline ? 'Menyinkronkan...' : 'Sinkronkan Sekarang'}</span>
             </button>
           )}
+        </div>
+      )}
+
+      {/* Correction Needed Banner from Excel Import */}
+      {needsCorrectionCount > 0 && (
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-4 rounded-xl bg-amber-950/35 border border-amber-500/40 text-amber-100">
+          <div className="flex items-start sm:items-center gap-3">
+            <div className="p-2 rounded-lg bg-amber-500/20 text-amber-300 shrink-0">
+              <AlertCircle className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="text-sm font-bold text-amber-300">
+                Ada <span className="font-mono tabular-nums">{needsCorrectionCount}</span> data jemaat hasil impor yang ditandai Perlu Koreksi
+              </div>
+              <div className="text-xs text-slate-300 mt-0.5">
+                Baris bermasalah dari Excel tetap dimasukkan ke database agar tidak ada data yang hilang. Klik tombol <strong className="text-amber-200">Perbaiki</strong> pada baris bertanda kuning untuk mengedit langsung; tanda akan hilang otomatis setelah disimpan.
+              </div>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setOnlyNeedsCorrection((prev) => !prev)}
+            className={`px-3.5 py-2 text-xs font-bold rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer border ${
+              onlyNeedsCorrection
+                ? 'bg-amber-400 text-slate-950 border-amber-300 shadow-sm'
+                : 'bg-amber-500/15 text-amber-300 border-amber-500/40 hover:bg-amber-500/25'
+            }`}
+          >
+            {onlyNeedsCorrection ? 'Tampilkan Semua Jemaat' : `Saring Perlu Koreksi (${needsCorrectionCount})`}
+          </button>
         </div>
       )}
 
@@ -366,10 +413,15 @@ export const MembersView: React.FC<MembersViewProps> = ({
               ) : (
                 filteredMembers.map((member) => {
                   const age = calculateAge(member.birthDate);
+                  const correctionReason = getCorrectionReason(member);
                   return (
                     <tr
                       key={member.id}
-                      className="hover:bg-slate-800/40 transition-colors"
+                      className={
+                        correctionReason
+                          ? 'bg-amber-950/20 hover:bg-amber-950/35 transition-colors'
+                          : 'hover:bg-slate-800/40 transition-colors'
+                      }
                     >
                       <td className="py-3 px-4 font-mono font-medium text-amber-300 whitespace-nowrap">
                         <div className="flex items-center gap-1.5">
@@ -391,16 +443,30 @@ export const MembersView: React.FC<MembersViewProps> = ({
                             )}
                           </div>
                           <div>
-                            <div className="flex items-center gap-2">
+                            <div className="flex flex-wrap items-center gap-2">
                               <span className="font-semibold text-white">
                                 {member.fullName}
                               </span>
+                              {correctionReason && (
+                                <span
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 whitespace-nowrap"
+                                  title={correctionReason}
+                                >
+                                  <AlertCircle className="w-3 h-3 text-amber-400 shrink-0" />
+                                  <span>Perlu Koreksi</span>
+                                </span>
+                              )}
                               {member.isOfflinePending && (
                                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40">
                                   ⏳ Antrean Sinkron
                                 </span>
                               )}
                             </div>
+                            {correctionReason && (
+                              <div className="text-[11px] text-amber-300/90 mt-0.5 max-w-[280px] truncate" title={correctionReason}>
+                                {correctionReason}
+                              </div>
+                            )}
                             {member.nickname && (
                               <div className="text-[11px] text-slate-400">
                                 Panggilan: {member.nickname}
@@ -484,10 +550,15 @@ export const MembersView: React.FC<MembersViewProps> = ({
                           </button>
                           <button
                             onClick={() => onOpenEditModal(member)}
-                            className="p-1.5 rounded-md text-slate-400 hover:text-blue-300 hover:bg-slate-800 transition-colors"
-                            title="Ubah Data"
+                            className={
+                              correctionReason
+                                ? 'inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-bold bg-amber-500 hover:bg-amber-400 text-slate-950 transition-colors cursor-pointer whitespace-nowrap'
+                                : 'p-1.5 rounded-md text-slate-400 hover:text-blue-300 hover:bg-slate-800 transition-colors cursor-pointer'
+                            }
+                            title={correctionReason ? `Perbaiki data: ${correctionReason}` : 'Ubah Data'}
                           >
-                            <Edit className="w-4 h-4" />
+                            <Edit className={correctionReason ? 'w-3.5 h-3.5' : 'w-4 h-4'} />
+                            {correctionReason && <span>Perbaiki</span>}
                           </button>
                           <button
                             onClick={() => {

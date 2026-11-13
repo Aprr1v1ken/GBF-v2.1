@@ -26,8 +26,9 @@ interface ImportModalProps {
   onClose: () => void;
   onImport: (
     members: Partial<Member>[]
-  ) => Promise<{ success: boolean; imported: number; familiesCreated?: number; failed: number; errors: string[] }>;
+  ) => Promise<{ success: boolean; imported: number; familiesCreated?: number; warningsCount?: number; warnings?: string[]; failed: number; errors: string[] }>;
   onClearExistingMembers?: () => Promise<boolean>;
+  onGoToMembers?: () => void;
   rayons: Rayon[];
   categorials: CategorialGroup[];
   families?: Family[];
@@ -39,6 +40,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
   onClose,
   onImport,
   onClearExistingMembers,
+  onGoToMembers,
   rayons,
   categorials,
   families = [],
@@ -287,9 +289,9 @@ export const ImportModal: React.FC<ImportModalProps> = ({
           >
             <Users className="w-4 h-4" />
             <span>2. Data Jemaat ({previewRows.length})</span>
-            {totalInvalid > 0 && (
-              <span className="px-1.5 py-0.2 rounded-full text-[9px] bg-rose-500/20 text-rose-300 border border-rose-500/30 font-bold">
-                {totalInvalid} salah
+            {totalWarning > 0 && (
+              <span className="px-1.5 py-0.2 rounded-full text-[9px] bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold">
+                {totalWarning} perlu koreksi
               </span>
             )}
           </button>
@@ -336,7 +338,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                   <div className="text-xs font-bold text-white flex items-center gap-2">
                     <span
                       className={`w-2.5 h-2.5 rounded-full ${
-                        members.length === 0 ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'
+                        members.length === 0 ? 'bg-emerald-400' : 'bg-amber-400'
                       }`}
                     />
                     <span>Status Database Jemaat Saat Ini:</span>
@@ -548,7 +550,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                         key={i}
                         className={
                           r.hasWarning
-                            ? 'bg-amber-950/15 hover:bg-amber-950/30 border-l-2 border-l-amber-500'
+                            ? 'bg-amber-950/25 hover:bg-amber-950/40'
                             : 'hover:bg-slate-800/40'
                         }
                       >
@@ -735,16 +737,27 @@ export const ImportModal: React.FC<ImportModalProps> = ({
                 </span>
               </div>
               {result.warningsCount !== undefined && result.warningsCount > 0 && (
-                <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg text-amber-200 flex items-start gap-2">
-                  <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-                  <div>
-                    <div className="font-bold">
-                      {result.warningsCount} data jemaat ditandai [⚠️ Perlu Koreksi]
-                    </div>
-                    <div className="text-[11px] text-amber-300/90 mt-0.5">
-                      Data yang memiliki format kurang lengkap tetap dimasukkan ke database dan telah diberi tanda. Anda dapat menyaring dan memperbaikinya langsung dengan mengklik tombol "Ubah" pada menu Data Jemaat.
+                <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg text-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                  <div className="flex items-start gap-2">
+                    <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                    <div>
+                      <div className="font-bold">
+                        {result.warningsCount} data jemaat ditandai [⚠️ Perlu Koreksi]
+                      </div>
+                      <div className="text-[11px] text-amber-300/90 mt-0.5">
+                        Data yang memiliki format kurang lengkap tetap dimasukkan ke database dan telah diberi tanda. Anda dapat menyaring dan memperbaikinya langsung pada menu Data Jemaat.
+                      </div>
                     </div>
                   </div>
+                  {onGoToMembers && (
+                    <button
+                      type="button"
+                      onClick={onGoToMembers}
+                      className="px-3 py-1.5 rounded-lg bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-[11px] whitespace-nowrap shrink-0 cursor-pointer transition-colors"
+                    >
+                      Buka &amp; Perbaiki Sekarang
+                    </button>
+                  )}
                 </div>
               )}
               {result.familiesCreated !== undefined && result.familiesCreated > 0 && (

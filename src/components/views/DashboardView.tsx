@@ -46,6 +46,7 @@ import {
 import { formatRupiah } from '../../utils/church-logic.ts';
 import type { Member, Family, FinancialTransaction, ChurchEvent, ServiceSchedule } from '../../types/index.ts';
 import { NotificationCenter } from '../NotificationCenter.tsx';
+import { AgePyramidChart } from '../AgePyramidChart.tsx';
 import {
   getUpcomingBirthdays,
   getUpcomingAnniversaries,
@@ -335,7 +336,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const nextMonthCount = useMemo(() => allCelebrations.filter((b) => b.isNextMonth).length, [allCelebrations]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 min-w-0 overflow-x-hidden">
       {/* Top Welcome & Quick Actions */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-6 rounded-2xl bg-gradient-to-r from-[#0c142b] via-[#111c3d] to-[#0c142b] border border-amber-500/25 shadow-lg">
         <div>
@@ -1123,9 +1124,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       </div>
 
       {/* SECTION: VISUALISASI DATA RECHARTS - TREN PERTUMBUHAN & DISTRIBUSI RAYON */}
-      <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 min-w-0">
         {/* Left: Tren Pertumbuhan Jemaat Bulanan (Recharts Area & Bar Chart) */}
-        <div className="xl:col-span-7 p-6 rounded-2xl bg-gradient-to-br from-[#0c1329] via-[#0f1936] to-[#0c1329] border border-amber-500/25 shadow-xl space-y-5 flex flex-col justify-between">
+        <div className="xl:col-span-7 min-w-0 p-4 sm:p-6 rounded-2xl bg-gradient-to-br from-[#0c1329] via-[#0f1936] to-[#0c1329] border border-amber-500/25 shadow-xl space-y-5 flex flex-col justify-between">
           <div className="space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800/80 pb-3.5">
               <div>
@@ -1342,7 +1343,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
 
         {/* Right: Distribusi Jemaat Berdasarkan Rayon (Recharts Donut / Pie & Bar Chart) */}
-        <div className="xl:col-span-5 p-6 rounded-2xl bg-gradient-to-br from-[#0c1329] via-[#0f1936] to-[#0c1329] border border-amber-500/25 shadow-xl space-y-5 flex flex-col justify-between">
+        <div className="xl:col-span-5 min-w-0 p-4 sm:p-6 rounded-2xl bg-gradient-to-br from-[#0c1329] via-[#0f1936] to-[#0c1329] border border-amber-500/25 shadow-xl space-y-5 flex flex-col justify-between">
           <div className="space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800/80 pb-3.5">
               <div>
@@ -1556,8 +1557,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
       </div>
 
+      {/* SECTION: PIRAMIDA USIA JEMAAT (RECHARTS DIVERGING POPULATION PYRAMID) */}
+      <AgePyramidChart
+        members={members}
+        onNavigate={onNavigate}
+        onOpenAddMember={onOpenAddMember}
+      />
+
       {/* Visual Card: Recharts Congregation Distribution by Age Group */}
-      <div className="p-6 rounded-2xl bg-gradient-to-br from-[#0c1329] via-[#101a38] to-[#0c1329] border border-amber-500/25 shadow-xl space-y-5">
+      <div className="p-4 sm:p-6 rounded-2xl bg-gradient-to-br from-[#0c1329] via-[#101a38] to-[#0c1329] border border-amber-500/25 shadow-xl space-y-5 min-w-0">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800/80 pb-4">
           <div>
             <div className="flex items-center gap-2">
